@@ -371,6 +371,7 @@ def upload_orders(request):
             "supplier_code": key[0],
             "order_date": key[1],
             "userid": r.get("user_id") or r.get("userid"),
+            "otype": (r.get("otype") or "O").upper(),  # 👈 NEW
             "products": [],
             "charges_13_3": {k: Decimal("0.000") for k in money_keys_13_3},
             "charges_12_3": {k: Decimal("0.000") for k in money_keys_12_3},
@@ -408,7 +409,7 @@ def upload_orders(request):
             supplier  = order["supplier_code"]
             orderdate = order["order_date"]
             userid    = order.get("userid")
-            otype     = "O"
+            otype = order.get("otype", "O")
 
             # ---------- HEADER TOTAL ----------
             header_total = Decimal("0")
