@@ -5,7 +5,7 @@ a = Analysis(
     ['SyncService.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.json', '.'), ('.env', '.'), ('django_sync', 'django_sync')],
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -10,11 +10,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
-from dotenv import load_dotenv
+
 import os
 
 # ---------- ENV ----------
-load_dotenv()                                   # .env in project root
+                              # .env in project root
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ---------- CORE ----------

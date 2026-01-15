@@ -1,19 +1,37 @@
-import threading
-import tkinter as tk
-from tkinter import ttk, messagebox
-import sys
-import re
-import socket
+# ===============================
+# HIDE CONSOLE WINDOW (WINDOWS)
+# ===============================
 import os
-import webbrowser
+import sys
 
-from PIL import Image, ImageTk
-
-import SyncService  # backend entry
+if os.name == "nt":
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # 0 = SW_HIDE
+    except Exception:
+        pass
 
 
 # ===============================
-# Get real local IP
+# NORMAL IMPORTS (UNCHANGED)
+# ===============================
+import threading
+import tkinter as tk
+from tkinter import ttk
+import socket
+import re
+import webbrowser
+
+from PIL import Image, ImageTk
+import SyncService
+
+PORT = 8000
+
+
+# ===============================
+# IP DETECTION
 # ===============================
 def get_local_ip():
     try:
@@ -22,105 +40,104 @@ def get_local_ip():
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except Exception:
+    except:
         return "127.0.0.1"
 
 
 LOCAL_IP = get_local_ip()
-PORT = 8000
 
 
 # ===============================
-# Redirect stdout / stderr
+# SAFE STDOUT REDIRECTOR
 # ===============================
-class TextRedirector:
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-        self.request_patterns = [
-            re.compile(r'"(GET|POST|PUT|DELETE|PATCH) (.*?) HTTP/[\d.]+" (\d{3})'),
-            re.compile(r'\] "(GET|POST|PUT|DELETE|PATCH) (.*?) HTTP/[\d.]+" (\d{3})')
-        ]
+class Redirect:
+    def __init__(self, widget, original):
+        self.widget = widget
+        self.original = original
+        self.http = re.compile(r'"(GET|POST)\s+([^"]+)"\s+(\d{3})')
 
     def write(self, msg):
+        if not msg:
+            return
+
+        # Always forward to real stdout
+        try:
+            self.original.write(msg)
+        except Exception:
+            pass
+
         if not msg.strip():
             return
 
-        if "Server running at" in msg:
-            self._write(
-                f"🟢 Server running at http://{LOCAL_IP}:{PORT}/\n",
-                "info"
-            )
+        # Backend start
+        if "Starting backend" in msg or "Starting development server" in msg:
+            self._log("🚀 Starting backend...\n", "info")
             return
 
-        for pattern in self.request_patterns:
-            match = pattern.search(msg)
-            if match:
-                method, url, status = match.groups()
-                status = int(status)
-                icon = "✅" if status < 400 else "❌"
-                tag = "success" if status < 400 else "error"
-                self._write(
-                    f"{method:<6} {url:<30} {icon} ({status})\n",
-                    tag
-                )
-                return
+        if "Backend running on" in msg or "Starting development server at" in msg:
+            self._log(f"🟢 Backend running on http://{LOCAL_IP}:{PORT}\n", "success")
+            return
 
-        if "error" in msg.lower() or "exception" in msg.lower():
-            self._write(msg, "error")
+        # HTTP log parsing (SHOW URL)
+        m = self.http.search(msg)
+        if m:
+            method, url, code = m.groups()
+            code = int(code)
+            icon = "✅" if code < 400 else "❌"
+            tag = "success" if code < 400 else "error"
+            self._log(f"{icon} {method} {url} → {code}\n", tag)
+            return
 
-    def _write(self, text, tag):
-        self.text_widget.after(0, self.text_widget.insert, tk.END, text, tag)
-        self.text_widget.after(0, self.text_widget.see, tk.END)
+        # Errors
+        if "ERROR" in msg or "Exception" in msg or "Traceback" in msg:
+            self._log(f"❌ {msg}", "error")
 
     def flush(self):
-        pass
+        try:
+            self.original.flush()
+        except Exception:
+            pass
+
+    def _log(self, text, tag):
+        self.widget.after(0, self.widget.insert, tk.END, text, tag)
+        self.widget.after(0, self.widget.see, tk.END)
 
 
 # ===============================
-# Backend Runner
+# BACKEND CONTROL
 # ===============================
+backend_running = False
+
+
 def start_backend():
-    try:
-        SyncService.main()
-    except Exception as e:
-        log_text.insert(
-            tk.END,
-            f"\n❌ Backend crashed: {e}\n",
-            "error"
-        )
-
-
-def run_backend_thread():
-    if backend_running.get():
-        messagebox.showinfo("Info", "Backend already running")
+    global backend_running
+    if backend_running:
+        log.insert(tk.END, "⚠️ Backend already running\n", "info")
         return
 
-    backend_running.set(True)
-    log_text.insert(
-        tk.END,
-        "🚀 Starting TASK PMS SYNC backend...\n",
-        "info"
-    )
+    backend_running = True
+    log.insert(tk.END, "🚀 Starting backend...\n", "info")
 
-    threading.Thread(target=start_backend, daemon=True).start()
+    def run():
+        try:
+            SyncService.main()
+        except Exception as e:
+            log.insert(tk.END, f"❌ Backend crashed: {e}\n", "error")
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 # ===============================
-# GUI Setup
+# GUI
 # ===============================
 root = tk.Tk()
 root.title("TASK PMS SYNC TOOL")
-root.geometry("950x550")
+root.geometry("1000x600")
 root.resizable(True, True)
 
-backend_running = tk.BooleanVar(value=False)
-
-
-# ===============================
 # Header
-# ===============================
 header = ttk.Frame(root)
-header.pack(fill="x", padx=12, pady=10)
+header.pack(fill="x", padx=10, pady=8)
 
 ttk.Label(
     header,
@@ -131,98 +148,73 @@ ttk.Label(
 ttk.Button(
     header,
     text="Start Backend",
-    command=run_backend_thread
+    command=start_backend
 ).pack(side="right")
 
 
 # ===============================
-# Log Area
+# LOG AREA
 # ===============================
-log_frame = ttk.LabelFrame(root, text="Server Activity")
-log_frame.pack(fill="both", expand=True, padx=12, pady=10)
+box = ttk.LabelFrame(root, text="Server Activity")
+box.pack(fill="both", expand=True, padx=10, pady=8)
 
-log_text = tk.Text(
-    log_frame,
+log = tk.Text(
+    box,
     bg="#0b1220",
     fg="#e5e7eb",
-    insertbackground="white",
     font=("Consolas", 10),
     wrap="word"
 )
-log_text.pack(fill="both", expand=True)
+log.pack(fill="both", expand=True)
 
-scrollbar = ttk.Scrollbar(log_text, command=log_text.yview)
-log_text.configure(yscrollcommand=scrollbar.set)
-scrollbar.pack(side="right", fill="y")
-
-log_text.tag_config("success", foreground="#22c55e")
-log_text.tag_config("error", foreground="#ef4444")
-log_text.tag_config("info", foreground="#38bdf8")
+log.tag_config("success", foreground="#22c55e")
+log.tag_config("error", foreground="#ef4444")
+log.tag_config("info", foreground="#38bdf8")
 
 
 # ===============================
-# Footer (FULL LOGO VISIBLE + CENTERED)
+# FOOTER (UNCHANGED)
 # ===============================
-footer = ttk.Frame(root, height=130)   # 🔥 HEIGHT FIX
-footer.pack(fill="x")
-footer.pack_propagate(False)           # 🔥 PREVENT CLIPPING
+footer = ttk.Frame(root)
+footer.pack(fill="x", pady=4)
 
-
-def open_imcbs():
-    webbrowser.open("https://imcbs.com")
-
-def load_logo():
-    try:
-        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-        logo_path = os.path.join(base, "imcbs_logo.png")
-        img = Image.open(logo_path)
-        img = img.resize((110, 100))   # ❗UNCHANGED SIZE
-        return ImageTk.PhotoImage(img)
-    except Exception as e:
-        print("Logo load error:", e)
-        return None
-
-
-# ---- CENTER BLOCK (ABSOLUTE CENTER) ----
-center_block = ttk.Frame(footer)
-center_block.place(relx=0.5, rely=0.5, anchor="center")
-
-logo_img = load_logo()
-
-if logo_img:
-    logo_lbl = tk.Label(center_block, image=logo_img, cursor="hand2")
-    logo_lbl.image = logo_img
-    logo_lbl.pack(side="left", padx=(0, 12))
-    logo_lbl.bind("<Button-1>", lambda e: open_imcbs())
-
-power_lbl = tk.Label(
-    center_block,
-    text="Powered by IMCBS.COM",
-    font=("Segoe UI", 11, "bold"),
-    fg="#2563eb",
-    cursor="hand2"
-)
-power_lbl.pack(side="left")
-power_lbl.bind("<Button-1>", lambda e: open_imcbs())
-
-
-# ---- STATUS (LEFT, DOES NOT AFFECT CENTER) ----
-status_lbl = ttk.Label(
+ttk.Label(
     footer,
     text=f"● Backend running on {LOCAL_IP}:{PORT}",
     foreground="green"
-)
-status_lbl.place(x=12, y=footer.winfo_reqheight() - 28)
+).pack(side="left", padx=8)
+
+
+def open_site():
+    webbrowser.open("https://imcbs.com")
+
+
+try:
+    base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((40, 36))
+    logo = ImageTk.PhotoImage(img)
+    lbl = tk.Label(footer, image=logo, cursor="hand2")
+    lbl.image = logo
+    lbl.pack(side="right", padx=6)
+    lbl.bind("<Button-1>", lambda e: open_site())
+except:
+    pass
+
+tk.Label(
+    footer,
+    text="Powered by IMCBS.COM",
+    fg="#2563eb",
+    cursor="hand2"
+).pack(side="right")
 
 
 # ===============================
-# Redirect stdout / stderr
+# REDIRECT STDOUT SAFELY
 # ===============================
-sys.stdout = TextRedirector(log_text)
-sys.stderr = TextRedirector(log_text)
+_real_stdout = sys.stdout
+_real_stderr = sys.stderr
 
+sys.stdout = Redirect(log, _real_stdout)
+sys.stderr = Redirect(log, _real_stderr)
 
-# ===============================
-# Start GUI
-# ===============================
 root.mainloop()

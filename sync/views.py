@@ -17,7 +17,7 @@ from .sql_helper import get_connection, _get_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-PAIR_PASSWORD = os.getenv("PAIR_PASSWORD", "IMC-MOBILE")
+PAIR_PASSWORD = "IMC-MOBILE"
 
 # ✅ Make JWT robust: default secret if env missing (so login won’t fail silently)
 JWT_SECRET = os.getenv("JWT_SECRET") or "dev-secret-change-me"
