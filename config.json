@@ -1,8 +1,22 @@
 {
   "ip": "auto",
   "port": 8000,
-  "dsn": "pktc",
-  "auto_start": true,
-  "log_level": "INFO",
-  "all_ips": ["192.168.1.35","172.25.240.1"]
+
+  "django_settings": "django_sync.settings",
+
+  "security": {
+    "SECRET_KEY": "super-secret-change-me",
+    "DEBUG": true,
+    "PAIR_PASSWORD": "IMC-MOBILE",
+    "JWT_SECRET": "SyncAnywhereJWTSecret2025",
+    "JWT_ALGO": "HS256"
+  },
+
+  "database": {
+    "DB_UID": "dba",
+    "DB_PWD": "(*$^)",
+    "DB_DSN": "pktc"
+  },
+
+  "log_level": "INFO"
 }

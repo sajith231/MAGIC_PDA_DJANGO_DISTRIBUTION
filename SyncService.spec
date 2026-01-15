@@ -1,22 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules
-from PyInstaller.utils.hooks import collect_all
-
-datas = [('config.json', '.'), ('.env', '.'), ('django_sync', 'django_sync'), ('db.sqlite3', '.')]
-binaries = []
-hiddenimports = []
-hiddenimports += collect_submodules('django')
-hiddenimports += collect_submodules('django_sync')
-tmp_ret = collect_all('django')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['SyncService.py'],
     pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    binaries=[],
+    datas=[('config.json', '.'), ('.env', '.'), ('django_sync', 'django_sync')],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
