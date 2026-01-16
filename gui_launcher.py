@@ -60,7 +60,6 @@ class Redirect:
         if not msg:
             return
 
-        # Always forward to real stdout
         try:
             self.original.write(msg)
         except Exception:
@@ -69,7 +68,6 @@ class Redirect:
         if not msg.strip():
             return
 
-        # Backend start
         if "Starting backend" in msg or "Starting development server" in msg:
             self._log("🚀 Starting backend...\n", "info")
             return
@@ -78,7 +76,6 @@ class Redirect:
             self._log(f"🟢 Backend running on http://{LOCAL_IP}:{PORT}\n", "success")
             return
 
-        # HTTP log parsing (SHOW URL)
         m = self.http.search(msg)
         if m:
             method, url, code = m.groups()
@@ -88,7 +85,6 @@ class Redirect:
             self._log(f"{icon} {method} {url} → {code}\n", tag)
             return
 
-        # Errors
         if "ERROR" in msg or "Exception" in msg or "Traceback" in msg:
             self._log(f"❌ {msg}", "error")
 
@@ -173,39 +169,41 @@ log.tag_config("info", foreground="#38bdf8")
 
 
 # ===============================
-# FOOTER (UNCHANGED)
+# FOOTER (CENTERED – LOGO LEFT, TEXT RIGHT)
 # ===============================
 footer = ttk.Frame(root)
-footer.pack(fill="x", pady=4)
+footer.pack(fill="x", pady=6)
 
-ttk.Label(
-    footer,
-    text=f"● Backend running on {LOCAL_IP}:{PORT}",
-    foreground="green"
-).pack(side="left", padx=8)
-
+# center container
+footer_center = ttk.Frame(footer)
+footer_center.pack(expand=True)
 
 def open_site():
     webbrowser.open("https://imcbs.com")
 
-
+# Logo (LEFT)
 try:
     base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((40, 36))
+    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((106, 102))
     logo = ImageTk.PhotoImage(img)
-    lbl = tk.Label(footer, image=logo, cursor="hand2")
-    lbl.image = logo
-    lbl.pack(side="right", padx=6)
-    lbl.bind("<Button-1>", lambda e: open_site())
-except:
+
+    logo_lbl = tk.Label(footer_center, image=logo, cursor="hand2")
+    logo_lbl.image = logo
+    logo_lbl.pack(side="left", padx=(0, 6))
+    logo_lbl.bind("<Button-1>", lambda e: open_site())
+except Exception:
     pass
 
-tk.Label(
-    footer,
+# Text (RIGHT of logo)
+text_lbl = tk.Label(
+    footer_center,
     text="Powered by IMCBS.COM",
     fg="#2563eb",
-    cursor="hand2"
-).pack(side="right")
+    cursor="hand2",
+    font=("Segoe UI", 10, "bold")
+)
+text_lbl.pack(side="left")
+text_lbl.bind("<Button-1>", lambda e: open_site())
 
 
 # ===============================

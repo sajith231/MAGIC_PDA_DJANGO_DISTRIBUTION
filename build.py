@@ -77,9 +77,10 @@ def build():
     gui_cmd = [
         py, "-m", "PyInstaller",
         "--onefile",
-        "--console",                  # console needed for Django internals
+        "--noconsole",              # ✅ IMPORTANT: NO TERMINAL WINDOW
         f"--name={PROJECT_NAME}",
 
+        # Django hidden imports (REQUIRED)
         "--hidden-import=django.core.management",
         "--hidden-import=django.core.management.commands.runserver",
         "--hidden-import=django.core.management.base",
@@ -91,6 +92,7 @@ def build():
         *add_data,
         GUI_ENTRY,
     ]
+
 
     print("\n🚀 Building GUI EXE …")
     run(gui_cmd)
