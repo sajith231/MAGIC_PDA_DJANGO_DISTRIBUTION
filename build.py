@@ -103,7 +103,7 @@ def build():
     service_cmd = [
         py, "-m", "PyInstaller",
         "--onefile",
-        "--console",
+        "--noconsole",
         "--name=SyncService",
         SERVICE_ENTRY,
     ]

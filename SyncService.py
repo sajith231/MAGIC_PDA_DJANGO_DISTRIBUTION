@@ -5,12 +5,44 @@ PAIR_PASSWORD is HARD-CODED
 Only DB_DSN is read from config.json
 """
 
-import json
+# ===============================
+# HIDE CONSOLE WINDOW (WINDOWS)
+# ===============================
 import os
-import socket
 import sys
+
+if os.name == "nt":
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    except Exception:
+        pass
+
+
+# ===============================
+# SAFE STDOUT / STDERR FOR --noconsole
+# ===============================
+if sys.stdout is None:
+    class _DummyIO:
+        def write(self, *_): 
+            pass
+        def flush(self): 
+            pass
+
+    sys.stdout = _DummyIO()
+    sys.stderr = _DummyIO()
+
+
+# ===============================
+# ORIGINAL IMPORTS (UNCHANGED)
+# ===============================
+import json
+import socket
 import shutil
 from typing import Tuple
+
 
 # ===============================
 # HARD LOCKED CONSTANTS
