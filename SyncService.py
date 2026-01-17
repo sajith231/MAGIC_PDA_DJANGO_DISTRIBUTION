@@ -10,6 +10,8 @@ Only DB_DSN is read from config.json
 # ===============================
 import os
 import sys
+import urllib.request
+import ssl
 
 if os.name == "nt":
     try:
@@ -61,6 +63,35 @@ DEBUG = False
 JWT_SECRET = "SyncAnywhereJWTSecret2025"
 JWT_ALGO = "HS256"
 
+API_URL = "https://activate.imcbs.com/corporate-clientid/list/"
+
+
+def validate_client_id(client_id: str) -> bool:
+    """
+    Returns True only if client_id exists
+    AND project list contains 'TASK PMS'
+    """
+    try:
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(API_URL, context=ctx, timeout=10) as res:
+            payload = json.loads(res.read().decode("utf-8"))
+
+        if not payload.get("success"):
+            return False
+
+        for corp in payload.get("data", []):
+            for shop in corp.get("shops", []):
+                if shop.get("client_id") == client_id:
+                    projects = shop.get("projects", [])
+                    return "TASK PMS" in projects
+
+        return False
+
+    except Exception as e:
+        print(f"❌ Client validation failed: {e}")
+        return False
+
+
 
 # ===============================
 # Helpers
@@ -78,11 +109,12 @@ def load_config():
     with open(path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    if "DB_DSN" not in cfg:
-        print("❌ config.json must contain DB_DSN")
+    if "DB_DSN" not in cfg or "CLIENT_ID" not in cfg:
+        print("❌ config.json must contain DB_DSN and CLIENT_ID")
         sys.exit(1)
 
-    return cfg["DB_DSN"]
+    return cfg["DB_DSN"], cfg["CLIENT_ID"]
+
 
 
 def select_ip(port):
@@ -120,7 +152,15 @@ def run_server(ip, port):
 # MAIN
 # ===============================
 def main():
-    db_dsn = load_config()
+    db_dsn, client_id = load_config()
+
+    print("🔐 Validating client license...")
+
+    if not validate_client_id(client_id):
+        print("❌ License check failed (Invalid client or TASK PMS not enabled)")
+        sys.exit(1)
+
+    print("✅ Client verified for TASK PMS")
 
     # 🔐 ENVIRONMENT
     os.environ["PAIR_PASSWORD"] = PAIR_PASSWORD

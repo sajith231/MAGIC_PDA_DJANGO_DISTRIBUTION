@@ -115,10 +115,26 @@ def start_backend():
     log.insert(tk.END, "🚀 Starting backend...\n", "info")
 
     def run():
+        global backend_running
         try:
             SyncService.main()
+
+        except SystemExit:
+            log.insert(
+                tk.END,
+                "❌ License validation failed\n❌ Unauthorized client or TASK PMS not enabled\n",
+                "error"
+            )
+            backend_running = False
+
         except Exception as e:
-            log.insert(tk.END, f"❌ Backend crashed: {e}\n", "error")
+            log.insert(
+                tk.END,
+                f"❌ Backend crashed: {e}\n",
+                "error"
+            )
+            backend_running = False
+
 
     threading.Thread(target=run, daemon=True).start()
 
