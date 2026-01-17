@@ -6,9 +6,6 @@ import sys
 from tkinter import messagebox
 import ctypes
 
-
-
-
 if os.name == "nt":
     try:
         import ctypes
@@ -36,7 +33,6 @@ if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
     )
     sys.exit(0)
 
-
 # ===============================
 # NORMAL IMPORTS (UNCHANGED)
 # ===============================
@@ -46,12 +42,12 @@ from tkinter import ttk
 import socket
 import re
 import webbrowser
+from datetime import datetime
 
 from PIL import Image, ImageTk
 import SyncService
 
 PORT = 8000
-
 
 # ===============================
 # IP DETECTION
@@ -66,9 +62,7 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
-
 LOCAL_IP = get_local_ip()
-
 
 # ===============================
 # SAFE STDOUT REDIRECTOR
@@ -91,12 +85,14 @@ class Redirect:
         if not msg.strip():
             return
 
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
         if "Starting backend" in msg or "Starting development server" in msg:
-            self._log("🚀 Starting backend...\n", "info")
+            self._log(f"[{timestamp}] 🚀 Starting backend...\n", "info")
             return
 
         if "Backend running on" in msg or "Starting development server at" in msg:
-            self._log(f"🟢 Backend running on http://{LOCAL_IP}:{PORT}\n", "success")
+            self._log(f"[{timestamp}] 🟢 Backend running on http://{LOCAL_IP}:{PORT}\n", "success")
             return
 
         m = self.http.search(msg)
@@ -105,11 +101,11 @@ class Redirect:
             code = int(code)
             icon = "✅" if code < 400 else "❌"
             tag = "success" if code < 400 else "error"
-            self._log(f"{icon} {method} {url} → {code}\n", tag)
+            self._log(f"[{timestamp}] {icon} {method} {url} → {code}\n", tag)
             return
 
         if "ERROR" in msg or "Exception" in msg or "Traceback" in msg:
-            self._log(f"❌ {msg}", "error")
+            self._log(f"[{timestamp}] ❌ {msg}", "error")
 
     def flush(self):
         try:
@@ -121,43 +117,57 @@ class Redirect:
         self.widget.after(0, self.widget.insert, tk.END, text, tag)
         self.widget.after(0, self.widget.see, tk.END)
 
-
 # ===============================
 # BACKEND CONTROL
 # ===============================
 backend_running = False
+status_label = None
+status_indicator = None
 
+def update_status(running):
+    """Update status indicator and label"""
+    if status_label and status_indicator:
+        if running:
+            status_indicator.config(bg="#22c55e")
+            status_label.config(text="ONLINE", foreground="#22c55e")
+            start_btn.config(state="disabled")
+            stop_btn.config(state="normal")
+        else:
+            status_indicator.config(bg="#ef4444")
+            status_label.config(text="OFFLINE", foreground="#ef4444")
+            start_btn.config(state="normal")
+            stop_btn.config(state="disabled")
 
 def start_backend():
     global backend_running
     if backend_running:
-        log.insert(tk.END, "⚠️ Backend already running\n", "info")
+        log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Backend already running\n", "info")
         return
 
     backend_running = True
-    log.insert(tk.END, "🚀 Starting backend...\n", "info")
+    update_status(True)
+    log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Starting backend...\n", "info")
 
     def run():
         global backend_running
         try:
             SyncService.main()
-
         except SystemExit:
             log.insert(
                 tk.END,
-                "❌ License validation failed\n❌ Unauthorized client or TASK PMS not enabled\n",
+                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ License validation failed\n❌ Unauthorized client or TASK PMS not enabled\n",
                 "error"
             )
             backend_running = False
-
+            update_status(False)
         except Exception as e:
             log.insert(
                 tk.END,
-                f"❌ Backend crashed: {e}\n",
+                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Backend crashed: {e}\n",
                 "error"
             )
             backend_running = False
-
+            update_status(False)
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -179,14 +189,24 @@ def stop_backend():
     if not confirm:
         return
 
-    log.insert(tk.END, "🛑 Stopping backend...\n", "info")
+    log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] 🛑 Stopping backend...\n", "info")
     backend_running = False
+    update_status(False)
 
     # Hard stop (safe for EXE apps)
     os._exit(0)
 
+def clear_logs():
+    """Clear the log window"""
+    log.delete(1.0, tk.END)
+    log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] 📋 Logs cleared\n", "info")
 
-
+def copy_url():
+    """Copy URL to clipboard"""
+    url = f"http://{LOCAL_IP}:{PORT}"
+    root.clipboard_clear()
+    root.clipboard_append(url)
+    messagebox.showinfo("Copied", f"URL copied to clipboard:\n{url}")
 
 # ===============================
 # GUI
@@ -200,130 +220,352 @@ try:
 except Exception:
     pass
 
-root.title("TASK PMS SYNC TOOL")
-root.geometry("1000x600")
+root.title("TASK PMS Sync Tool - Professional Edition")
+root.geometry("1200x700")
 root.resizable(True, True)
+root.configure(bg="#f8fafc")
 
+# Custom Style
+style = ttk.Style()
+style.theme_use('clam')
+
+# Configure custom styles
+style.configure("Header.TFrame", background="#ffffff")
+style.configure("Main.TFrame", background="#f8fafc")
+style.configure("Card.TFrame", background="#ffffff", relief="flat")
+style.configure("Title.TLabel", background="#ffffff", font=("Segoe UI", 22, "bold"), foreground="#0f172a")
+style.configure("Subtitle.TLabel", background="#ffffff", font=("Segoe UI", 11), foreground="#64748b")
+style.configure("Status.TLabel", background="#ffffff", font=("Segoe UI", 10, "bold"))
+style.configure("Info.TLabel", background="#ffffff", font=("Segoe UI", 10), foreground="#475569")
+
+# Custom button styles
+style.configure("Start.TButton", font=("Segoe UI", 10, "bold"), padding=10)
+style.configure("Stop.TButton", font=("Segoe UI", 10, "bold"), padding=10)
+style.configure("Action.TButton", font=("Segoe UI", 9), padding=8)
+
+style.map("Start.TButton",
+          background=[("active", "#16a34a"), ("!disabled", "#22c55e")],
+          foreground=[("!disabled", "white")])
+style.map("Stop.TButton",
+          background=[("active", "#dc2626"), ("!disabled", "#ef4444")],
+          foreground=[("!disabled", "white")])
 
 # ===============================
-# HEADER
+# HEADER SECTION
 # ===============================
-header = ttk.Frame(root)
-header.pack(fill="x", padx=10, pady=8)
+header = tk.Frame(root, bg="#ffffff", height=140)
+header.pack(fill="x", padx=0, pady=0)
+header.pack_propagate(False)
 
+# Header content container
+header_content = tk.Frame(header, bg="#ffffff")
+header_content.pack(fill="both", expand=True, padx=30, pady=20)
 
-# ===============================
-# HEADER ICON + TITLE + RUNNING IP
-# ===============================
-title_frame = ttk.Frame(header)
-title_frame.pack(side="left")
+# Left side - Logo and Title
+left_section = tk.Frame(header_content, bg="#ffffff")
+left_section.pack(side="left", fill="y")
 
-# 🔹 App Icon (inside UI)
+# 🔹 App Icon
 try:
     base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    icon_img = Image.open(os.path.join(base, "pms_icone.png")).resize((36, 36))
+    icon_img = Image.open(os.path.join(base, "pms_icone.png")).resize((48, 48), Image.Resampling.LANCZOS)
     title_icon = ImageTk.PhotoImage(icon_img)
-
-    icon_lbl = tk.Label(title_frame, image=title_icon)
+    
+    icon_lbl = tk.Label(left_section, image=title_icon, bg="#ffffff")
     icon_lbl.image = title_icon
-    icon_lbl.pack(side="left", padx=(0, 10))
+    icon_lbl.pack(side="left", padx=(0, 15))
 except Exception:
     pass
 
-# 🔹 App Title
-ttk.Label(
-    title_frame,
+# Title and subtitle
+title_container = tk.Frame(left_section, bg="#ffffff")
+title_container.pack(side="left")
+
+tk.Label(
+    title_container,
     text="TASK PMS SYNC TOOL",
-    font=("Segoe UI", 18, "bold")
-).pack(side="left")
+    font=("Segoe UI", 22, "bold"),
+    fg="#0f172a",
+    bg="#ffffff"
+).pack(anchor="w")
 
-# 🔹 RUNNING IP (BIG & CLEAR)
-ttk.Label(
-    title_frame,
-    text=f"Running on: http://{LOCAL_IP}:{PORT}",
-    font=("Segoe UI", 12, "bold"),
-    foreground="#16a34a"  # green
-).pack(side="left", padx=(20, 0))
+tk.Label(
+    title_container,
+    text="Professional Sync Tool Service",
+    font=("Segoe UI", 11),
+    fg="#64748b",
+    bg="#ffffff"
+).pack(anchor="w")
 
+# Right side - Status and Controls
+right_section = tk.Frame(header_content, bg="#ffffff")
+right_section.pack(side="right", fill="y")
 
-# ===============================
-# HEADER BUTTONS (RIGHT)
-# ===============================
-btn_frame = ttk.Frame(header)
-btn_frame.pack(side="right")
+# Status Card
+status_card = tk.Frame(right_section, bg="#f1f5f9", relief="flat", bd=0)
+status_card.pack(side="top", pady=(0, 10))
 
-start_btn = ttk.Button(
-    btn_frame,
-    text="▶ Start Backend",
-    command=start_backend
+status_content = tk.Frame(status_card, bg="#f1f5f9")
+status_content.pack(padx=20, pady=12)
+
+tk.Label(
+    status_content,
+    text="STATUS:",
+    font=("Segoe UI", 9, "bold"),
+    fg="#64748b",
+    bg="#f1f5f9"
+).pack(side="left", padx=(0, 10))
+
+# Status indicator (colored circle)
+status_indicator = tk.Canvas(status_content, width=12, height=12, bg="#f1f5f9", highlightthickness=0)
+status_indicator.pack(side="left", padx=(0, 8))
+status_indicator.create_oval(2, 2, 12, 12, fill="#ef4444", outline="")
+
+# Status text
+status_label = tk.Label(
+    status_content,
+    text="OFFLINE",
+    font=("Segoe UI", 11, "bold"),
+    fg="#ef4444",
+    bg="#f1f5f9"
+)
+status_label.pack(side="left")
+
+# Control buttons
+btn_container = tk.Frame(right_section, bg="#ffffff")
+btn_container.pack(side="top")
+
+start_btn = tk.Button(
+    btn_container,
+    text="▶  Start Service",
+    command=start_backend,
+    font=("Segoe UI", 10, "bold"),
+    bg="#22c55e",
+    fg="white",
+    activebackground="#16a34a",
+    activeforeground="white",
+    relief="flat",
+    padx=20,
+    pady=10,
+    cursor="hand2",
+    bd=0
 )
 start_btn.pack(side="left", padx=(0, 8))
 
-stop_btn = ttk.Button(
-    btn_frame,
-    text="■ Stop Backend",
-    command=stop_backend
+stop_btn = tk.Button(
+    btn_container,
+    text="■  Stop Service",
+    command=stop_backend,
+    font=("Segoe UI", 10, "bold"),
+    bg="#ef4444",
+    fg="white",
+    activebackground="#dc2626",
+    activeforeground="white",
+    relief="flat",
+    padx=20,
+    pady=10,
+    cursor="hand2",
+    state="disabled",
+    bd=0
 )
 stop_btn.pack(side="left")
 
+# Separator line
+separator = tk.Frame(root, bg="#e2e8f0", height=1)
+separator.pack(fill="x")
+
+# ===============================
+# MAIN CONTENT AREA
+# ===============================
+main_content = tk.Frame(root, bg="#f8fafc")
+main_content.pack(fill="both", expand=True, padx=30, pady=20)
+
+# Info Cards Row
+info_row = tk.Frame(main_content, bg="#f8fafc")
+info_row.pack(fill="x", pady=(0, 20))
+
+# Server URL Card
+url_card = tk.Frame(info_row, bg="#ffffff", relief="flat", bd=1, highlightbackground="#e2e8f0", highlightthickness=1)
+url_card.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+url_content = tk.Frame(url_card, bg="#ffffff")
+url_content.pack(padx=20, pady=15)
+
+tk.Label(
+    url_content,
+    text="🌐 Server Address",
+    font=("Segoe UI", 10, "bold"),
+    fg="#475569",
+    bg="#ffffff"
+).pack(anchor="w")
+
+url_text = tk.Label(
+    url_content,
+    text=f"http://{LOCAL_IP}:{PORT}",
+    font=("Segoe UI", 14, "bold"),
+    fg="#2563eb",
+    bg="#ffffff"
+)
+url_text.pack(anchor="w", pady=(5, 0))
+
+# Local IP Card
+ip_card = tk.Frame(info_row, bg="#ffffff", relief="flat", bd=1, highlightbackground="#e2e8f0", highlightthickness=1)
+ip_card.pack(side="left", fill="both", expand=True)
+
+ip_content = tk.Frame(ip_card, bg="#ffffff")
+ip_content.pack(padx=20, pady=15)
+
+tk.Label(
+    ip_content,
+    text="📡 Local IP Address",
+    font=("Segoe UI", 10, "bold"),
+    fg="#475569",
+    bg="#ffffff"
+).pack(anchor="w")
+
+tk.Label(
+    ip_content,
+    text=LOCAL_IP,
+    font=("Segoe UI", 14, "bold"),
+    fg="#059669",
+    bg="#ffffff"
+).pack(anchor="w", pady=(5, 0))
+
+tk.Label(
+    ip_content,
+    text=f"Port: {PORT}",
+    font=("Segoe UI", 9),
+    fg="#64748b",
+    bg="#ffffff"
+).pack(anchor="w", pady=(10, 0))
 
 # ===============================
 # LOG AREA
 # ===============================
-box = ttk.LabelFrame(root, text="Server Activity")
-box.pack(fill="both", expand=True, padx=10, pady=8)
+log_container = tk.Frame(main_content, bg="#ffffff", relief="flat", bd=1, highlightbackground="#e2e8f0", highlightthickness=1)
+log_container.pack(fill="both", expand=True)
+
+# Log header
+log_header = tk.Frame(log_container, bg="#f8fafc", height=45)
+log_header.pack(fill="x")
+log_header.pack_propagate(False)
+
+log_header_content = tk.Frame(log_header, bg="#f8fafc")
+log_header_content.pack(fill="both", padx=15, pady=10)
+
+tk.Label(
+    log_header_content,
+    text="📊 Server Activity Monitor",
+    font=("Segoe UI", 11, "bold"),
+    fg="#0f172a",
+    bg="#f8fafc"
+).pack(side="left")
+
+clear_btn = tk.Button(
+    log_header_content,
+    text="🗑 Clear Logs",
+    command=clear_logs,
+    font=("Segoe UI", 9),
+    bg="#f1f5f9",
+    fg="#475569",
+    activebackground="#e2e8f0",
+    activeforeground="#475569",
+    relief="flat",
+    padx=12,
+    pady=5,
+    cursor="hand2",
+    bd=0
+)
+clear_btn.pack(side="right")
+
+# Log text area with scrollbar
+log_frame = tk.Frame(log_container, bg="#0f172a")
+log_frame.pack(fill="both", expand=True)
+
+scrollbar = tk.Scrollbar(log_frame)
+scrollbar.pack(side="right", fill="y")
 
 log = tk.Text(
-    box,
-    bg="#0b1220",
-    fg="#e5e7eb",
+    log_frame,
+    bg="#0f172a",
+    fg="#e2e8f0",
     font=("Consolas", 10),
-    wrap="word"
+    wrap="word",
+    yscrollcommand=scrollbar.set,
+    padx=15,
+    pady=10,
+    relief="flat",
+    insertbackground="#22c55e"
 )
 log.pack(fill="both", expand=True)
+scrollbar.config(command=log.yview)
 
-log.tag_config("success", foreground="#22c55e")
-log.tag_config("error", foreground="#ef4444")
-log.tag_config("info", foreground="#38bdf8")
+# Log color tags
+log.tag_config("success", foreground="#22c55e", font=("Consolas", 10, "bold"))
+log.tag_config("error", foreground="#ef4444", font=("Consolas", 10, "bold"))
+log.tag_config("info", foreground="#3b82f6", font=("Consolas", 10))
 
+# Initial log message
+log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] ⚡ TASK PMS Sync Tool initialized\n", "info")
+log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] 📍 Server address: http://{LOCAL_IP}:{PORT}\n", "info")
+log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ Waiting for service to start...\n", "info")
 
 # ===============================
-# FOOTER (CENTERED – LOGO LEFT, TEXT RIGHT)
+# FOOTER
 # ===============================
-footer = ttk.Frame(root)
-footer.pack(fill="x", pady=6)
+footer = tk.Frame(root, bg="#ffffff", height=70)
+footer.pack(fill="x", side="bottom")
+footer.pack_propagate(False)
 
-# center container
-footer_center = ttk.Frame(footer)
-footer_center.pack(expand=True)
+# Top border
+footer_border = tk.Frame(footer, bg="#e2e8f0", height=1)
+footer_border.pack(fill="x")
+
+footer_content = tk.Frame(footer, bg="#ffffff")
+footer_content.pack(expand=True)
 
 def open_site():
     webbrowser.open("https://imcbs.com")
 
-# Logo (LEFT)
+# Logo and text container
+branding = tk.Frame(footer_content, bg="#ffffff")
+branding.pack()
+
+# Logo
 try:
     base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((106, 90))
+    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((80, 68), Image.Resampling.LANCZOS)
     logo = ImageTk.PhotoImage(img)
-
-    logo_lbl = tk.Label(footer_center, image=logo, cursor="hand2")
+    
+    logo_lbl = tk.Label(branding, image=logo, cursor="hand2", bg="#ffffff")
     logo_lbl.image = logo
-    logo_lbl.pack(side="left", padx=(0, 6))
+    logo_lbl.pack(side="left", padx=(0, 12))
     logo_lbl.bind("<Button-1>", lambda e: open_site())
 except Exception:
     pass
 
-# Text (RIGHT of logo)
+# Branding text
+branding_text = tk.Frame(branding, bg="#ffffff")
+branding_text.pack(side="left")
+
 text_lbl = tk.Label(
-    footer_center,
+    branding_text,
     text="Powered by IMCBS.COM",
     fg="#2563eb",
     cursor="hand2",
-    font=("Segoe UI", 10, "bold")
+    font=("Segoe UI", 11, "bold"),
+    bg="#ffffff"
 )
-text_lbl.pack(side="left")
+text_lbl.pack()
 text_lbl.bind("<Button-1>", lambda e: open_site())
 
+tk.Label(
+    branding_text,
+    text="© 2026 IMCBS. All rights reserved.",
+    font=("Segoe UI", 8),
+    fg="#94a3b8",
+    bg="#ffffff"
+).pack()
 
 # ===============================
 # REDIRECT STDOUT SAFELY
@@ -333,5 +575,8 @@ _real_stderr = sys.stderr
 
 sys.stdout = Redirect(log, _real_stdout)
 sys.stderr = Redirect(log, _real_stderr)
+
+# Initialize status
+update_status(False)
 
 root.mainloop()
