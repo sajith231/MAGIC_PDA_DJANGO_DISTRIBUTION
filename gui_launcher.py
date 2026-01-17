@@ -3,6 +3,9 @@
 # ===============================
 import os
 import sys
+from tkinter import messagebox
+import os
+
 
 if os.name == "nt":
     try:
@@ -138,6 +141,31 @@ def start_backend():
 
     threading.Thread(target=run, daemon=True).start()
 
+def stop_backend():
+    global backend_running
+
+    if not backend_running:
+        messagebox.showinfo(
+            "Backend Not Running",
+            "The backend is not currently running."
+        )
+        return
+
+    confirm = messagebox.askokcancel(
+        "Stop Backend",
+        "Are you sure you want to stop the backend?\n\nAll active connections will be closed."
+    )
+
+    if not confirm:
+        return
+
+    log.insert(tk.END, "🛑 Stopping backend...\n", "info")
+    backend_running = False
+
+    # Hard stop (safe for EXE apps)
+    os._exit(0)
+
+
 
 # ===============================
 # GUI
@@ -157,11 +185,23 @@ ttk.Label(
     font=("Segoe UI", 18, "bold")
 ).pack(side="left")
 
-ttk.Button(
-    header,
-    text="Start Backend",
+btn_frame = ttk.Frame(header)
+btn_frame.pack(side="right")
+
+start_btn = ttk.Button(
+    btn_frame,
+    text="▶ Start Backend",
     command=start_backend
-).pack(side="right")
+)
+start_btn.pack(side="left", padx=(0, 6))
+
+stop_btn = ttk.Button(
+    btn_frame,
+    text="■ Stop Backend",
+    command=stop_backend
+)
+stop_btn.pack(side="left")
+
 
 
 # ===============================
