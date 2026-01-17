@@ -15,6 +15,7 @@ EXTRA_DATA = [
     ("django_sync", "django_sync"),
     ("db.sqlite3", "."),
     ("imcbs_logo.png", "."),
+    ("pms_icone.ico", "."),   # optional
 ]
 
 REQUIREMENTS = [
@@ -79,6 +80,7 @@ def build():
         "--onefile",
         "--noconsole",              # ✅ IMPORTANT: NO TERMINAL WINDOW
         f"--name={PROJECT_NAME}",
+        "--icon=pms_icone.ico",   # ✅ ADD THIS LINE
 
         # Django hidden imports (REQUIRED)
         "--hidden-import=django.core.management",

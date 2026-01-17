@@ -240,7 +240,7 @@ def open_site():
 # Logo (LEFT)
 try:
     base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((106, 102))
+    img = Image.open(os.path.join(base, "imcbs_logo.png")).resize((106, 90))
     logo = ImageTk.PhotoImage(img)
 
     logo_lbl = tk.Label(footer_center, image=logo, cursor="hand2")
