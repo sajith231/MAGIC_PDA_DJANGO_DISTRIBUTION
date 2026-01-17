@@ -4,7 +4,9 @@
 import os
 import sys
 from tkinter import messagebox
-import os
+import ctypes
+
+
 
 
 if os.name == "nt":
@@ -15,6 +17,24 @@ if os.name == "nt":
             ctypes.windll.user32.ShowWindow(hwnd, 0)  # 0 = SW_HIDE
     except Exception:
         pass
+
+# ===============================
+# SINGLE INSTANCE CHECK (WINDOWS)
+# ===============================
+mutex_name = "TASK_PMS_SYNC_TOOL_SINGLE_INSTANCE"
+
+mutex = ctypes.windll.kernel32.CreateMutexW(
+    None, False, mutex_name
+)
+
+ERROR_ALREADY_EXISTS = 183
+
+if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+    messagebox.showinfo(
+        "Already Running",
+        "TASK PMS Sync Tool is already running.\n\nPlease check the existing window."
+    )
+    sys.exit(0)
 
 
 # ===============================
@@ -167,24 +187,68 @@ def stop_backend():
 
 
 
+
 # ===============================
 # GUI
 # ===============================
 root = tk.Tk()
+
+# 🔹 Window / Taskbar Icon
+try:
+    base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    root.iconbitmap(os.path.join(base, "pms_icone.ico"))
+except Exception:
+    pass
+
 root.title("TASK PMS SYNC TOOL")
 root.geometry("1000x600")
 root.resizable(True, True)
 
-# Header
+
+# ===============================
+# HEADER
+# ===============================
 header = ttk.Frame(root)
 header.pack(fill="x", padx=10, pady=8)
 
+
+# ===============================
+# HEADER ICON + TITLE + RUNNING IP
+# ===============================
+title_frame = ttk.Frame(header)
+title_frame.pack(side="left")
+
+# 🔹 App Icon (inside UI)
+try:
+    base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    icon_img = Image.open(os.path.join(base, "pms_icone.png")).resize((36, 36))
+    title_icon = ImageTk.PhotoImage(icon_img)
+
+    icon_lbl = tk.Label(title_frame, image=title_icon)
+    icon_lbl.image = title_icon
+    icon_lbl.pack(side="left", padx=(0, 10))
+except Exception:
+    pass
+
+# 🔹 App Title
 ttk.Label(
-    header,
+    title_frame,
     text="TASK PMS SYNC TOOL",
     font=("Segoe UI", 18, "bold")
 ).pack(side="left")
 
+# 🔹 RUNNING IP (BIG & CLEAR)
+ttk.Label(
+    title_frame,
+    text=f"Running on: http://{LOCAL_IP}:{PORT}",
+    font=("Segoe UI", 12, "bold"),
+    foreground="#16a34a"  # green
+).pack(side="left", padx=(20, 0))
+
+
+# ===============================
+# HEADER BUTTONS (RIGHT)
+# ===============================
 btn_frame = ttk.Frame(header)
 btn_frame.pack(side="right")
 
@@ -193,7 +257,7 @@ start_btn = ttk.Button(
     text="▶ Start Backend",
     command=start_backend
 )
-start_btn.pack(side="left", padx=(0, 6))
+start_btn.pack(side="left", padx=(0, 8))
 
 stop_btn = ttk.Button(
     btn_frame,
@@ -201,7 +265,6 @@ stop_btn = ttk.Button(
     command=stop_backend
 )
 stop_btn.pack(side="left")
-
 
 
 # ===============================

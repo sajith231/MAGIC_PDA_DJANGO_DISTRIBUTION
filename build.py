@@ -16,6 +16,7 @@ EXTRA_DATA = [
     ("db.sqlite3", "."),
     ("imcbs_logo.png", "."),
     ("pms_icone.ico", "."),   # optional
+    ("pms_icone.png", "."),
 ]
 
 REQUIREMENTS = [
