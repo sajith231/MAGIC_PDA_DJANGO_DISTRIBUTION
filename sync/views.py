@@ -371,7 +371,7 @@ def upload_orders(request):
             "supplier_code": key[0],
             "order_date": key[1],
             "userid": r.get("user_id") or r.get("userid"),
-            "otype": (r.get("otype") or "O").upper(),  # 👈 NEW
+            "otype": (r.get("otype") or "O").upper(),
             "products": [],
             "charges_13_3": {k: Decimal("0.000") for k in money_keys_13_3},
             "charges_12_3": {k: Decimal("0.000") for k in money_keys_12_3},
@@ -409,7 +409,10 @@ def upload_orders(request):
             supplier  = order["supplier_code"]
             orderdate = order["order_date"]
             userid    = order.get("userid")
-            otype = order.get("otype", "O")
+            otype     = order.get("otype", "O")
+
+            # ✅ SOLD FIELD CONDITION
+            sold_value = "N"
 
             # ---------- HEADER TOTAL ----------
             header_total = Decimal("0")
@@ -425,14 +428,15 @@ def upload_orders(request):
                 INSERT INTO acc_purchaseordermaster
                     (slno, orderno, orderdate, supplier, otype, userid,
                      total, discount, pnfcharges, exceiseduty, salestax,
-                     freightcharge, othercharges, cessonED, cess)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     freightcharge, othercharges, cessonED, cess, sold)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 masterslno, masterslno, orderdate, supplier, otype, userid,
                 float(header_total),
                 float(c13["discount"]), float(c13["pnfcharges"]), float(c13["exceiseduty"]),
                 float(c13["salestax"]), float(c13["freightcharge"]), float(c13["othercharges"]),
                 float(c12["cessoned"]), float(c12["cess"]),
+                sold_value
             ))
 
             # ------------ INSERT DETAILS ------------
@@ -449,36 +453,27 @@ def upload_orders(request):
                 manual_item = str(prod.get("item") or "").strip()
 
                 product_code = None
-                product_name = None
                 final_barcode = barcode
 
-                # -------- MANUAL ENTRY --------
                 if ioflag == -100:
                     item_value = manual_item or manual_code or "Manual Entry"
                     final_barcode = manual_code or final_barcode or "MANUAL"
-
                 else:
-                    # -------- REGULAR PRODUCT LOOKUP --------
                     if barcode:
-                        cur.execute("SELECT productcode FROM acc_productbatch WHERE barcode = ?", (barcode,))
+                        cur.execute(
+                            "SELECT productcode FROM acc_productbatch WHERE barcode = ?",
+                            (barcode,)
+                        )
                         row = cur.fetchone()
                         if row:
                             product_code = row[0]
-
-                    # ✔ FIX: For normal items, store product_code (NOT product_name)
                     item_value = product_code or barcode or "UNKNOWN"
 
-                # Keep original trimming rule
                 item_value = (item_value or "UNKNOWN").strip()[:30]
                 final_barcode = (final_barcode or "NOBARCODE").strip()
-
-                # manual → store itemdetails
-                # normal → NULL
                 itemdetails_value = item_value if ioflag == -100 else None
-
                 taxcode_value = "NT"
 
-                # -------- INSERT DETAIL --------
                 cur.execute("""
                     INSERT INTO acc_purchaseorderdetails
                         (slno, masterslno, item, barcode, qty, rate, mrp,
@@ -518,6 +513,7 @@ def upload_orders(request):
 
 
 
+
 @require_http_methods(["GET"])
 def get_status(request):
     cfg = _get_config()
@@ -542,53 +538,124 @@ def get_status(request):
         }
     })
 
-
 @jwt_required
 @require_http_methods(["GET"])
 def get_product_details(request):
-    """
-    Returns combined product details from acc_product and acc_productbatch (joined on code=productcode)
-    """
     logging.info("📦 Product details request")
     conn = get_connection()
     cur = conn.cursor()
+
     try:
+        # 🔹 Fetch price codes with names
+        cur.execute("""
+            SELECT code, name
+            FROM acc_pricecode
+            ORDER BY code
+        """)
+        price_code_map = [
+            {"code": r[0].strip(), "name": r[1].strip()}
+            for r in cur.fetchall()
+        ]
+
         cur.execute("""
             SELECT 
-                p.code, p.name, p.catagory, p.product, p.brand, p.unit, p.taxcode,
-                pb.productcode, pb.barcode, pb.quantity, pb.cost, pb.bmrp,
-                pb.salesprice, pb.secondprice, pb.thirdprice, pb.supplier, pb.expirydate
+                p.code,
+                p.name,
+                d.department,
+                p.product,
+                p.brand,
+                p.unit,
+                p.taxcode,
+
+                pb.productcode,
+                pb.barcode,
+                pb.quantity,
+
+                pb.salesprice,
+                pb.secondprice,
+                pb.thirdprice,
+                pb.fourthprice,
+
+                m.name AS supplier_name,
+                pb.expirydate
+
             FROM acc_product p
-            LEFT JOIN acc_productbatch pb ON p.code = pb.productcode
+
+            LEFT JOIN acc_departments d
+                   ON p.catagory = d.department_id
+
+            LEFT JOIN acc_productbatch pb
+                   ON p.code = pb.productcode
+
+            LEFT JOIN acc_master m
+                   ON pb.supplier = m.code
+
             ORDER BY p.code
         """)
+
         rows = cur.fetchall()
         out = []
+
         for r in rows:
-            expiry = r[16]
+            expiry = r[15]
             if expiry:
                 expiry = expiry.isoformat() if hasattr(expiry, "isoformat") else str(expiry)
-            out.append({
-                "code": r[0], "name": r[1], "catagory": r[2], "product": r[3],
-                "brand": r[4], "unit": r[5], "taxcode": r[6],
-                "productcode": r[7], "barcode": r[8],
-                "quantity": _to_float(r[9]), "cost": _to_float(r[10]),
-                "bmrp": _to_float(r[11]), "salesprice": _to_float(r[12]),
-                "secondprice": _to_float(r[13]), "thirdprice": _to_float(r[14]),
-                "supplier": r[15], "expirydate": expiry
-            })
-        return JsonResponse({"status": "success", "count": len(out), "data": out})
+
+            item = {
+                "code": r[0],
+                "name": r[1],
+                "catagory": r[2],
+                "product": r[3],
+                "brand": r[4],
+                "unit": r[5],
+                "taxcode": r[6],
+
+                "productcode": r[7],
+                "barcode": r[8],
+                "quantity": _to_float(r[9]),
+
+                # ✅ FIXED
+                "supplier": r[14],
+                "expirydate": expiry,
+
+                "prices": []
+            }
+
+            price_values = [r[10], r[11], r[12], r[13]]
+
+            for i, price_def in enumerate(price_code_map):
+                if i >= len(price_values):
+                    break
+
+                value = price_values[i] or 0
+
+                item["prices"].append({
+                    "price_code": price_def["code"],
+                    "price_name": price_def["name"],
+                    "value": f"{_to_float(value):.2f}"
+                })
+
+            out.append(item)
+
+        return JsonResponse({
+            "status": "success",
+            "count": len(out),
+            "data": out
+        })
+
     except Exception as e:
         logging.exception("get_product_details failed")
-        return JsonResponse({"detail": f"Failed to fetch product details: {e}"}, status=500)
+        return JsonResponse(
+            {"detail": f"Failed to fetch product details: {e}"},
+            status=500
+        )
+
     finally:
         try:
-            cur.close(); conn.close()
+            cur.close()
+            conn.close()
         except Exception:
             pass
-
-
-
 
 
 
@@ -598,8 +665,9 @@ def get_product_details(request):
 #     po.orderno,
 #     po.orderdate,
 #     po.supplier,
+#     po.otype,              -- ✅ ADDED
+#     po.sold,
 
-#     -- MASTER FIELDS
 #     po.total,
 #     po.discount,
 #     po.pnfcharges,
@@ -610,7 +678,6 @@ def get_product_details(request):
 #     po.cessonED,
 #     po.cess,
 
-#     -- DETAILS FIELDS
 #     pd.slno AS detail_slno,
 #     pd.item AS product_code_or_name,
 #     pd.barcode,
@@ -619,16 +686,14 @@ def get_product_details(request):
 #     pd.mrp,
 #     pd.taxcode,
 #     pd.ioflag,
-#     pd.itemdetails AS manual_item,     -- 🆕 Manual entry name
+#     pd.itemdetails AS manual_item,
 
-#     -- PRODUCT TABLE FIELDS
 #     p.name        AS product_name,
 #     p.catagory,
 #     p.brand,
 #     p.unit,
 #     p.taxcode     AS product_taxcode,
 
-#     -- BATCH FIELDS
 #     pb.productcode,
 #     pb.quantity   AS batch_quantity,
 #     pb.cost       AS batch_cost,
@@ -640,14 +705,13 @@ def get_product_details(request):
 
 # FROM acc_purchaseordermaster po
 # JOIN acc_purchaseorderdetails pd 
-#       ON pd.masterslno = po.slno
+#        ON pd.masterslno = po.slno
 
 # LEFT JOIN acc_productbatch pb 
-#       ON pb.barcode = pd.barcode
+#        ON pb.barcode = pd.barcode
 
 # LEFT JOIN acc_product p 
-#       ON p.code = pb.productcode
+#        ON p.code = pb.productcode
 
-# WHERE po.orderdate = TODAY()        -- 🔥 only today's orders
+# WHERE po.orderdate = TODAY()
 # ORDER BY pd.slno DESC;
-
