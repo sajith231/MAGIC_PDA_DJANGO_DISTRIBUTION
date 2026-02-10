@@ -659,7 +659,7 @@ def get_product_details(request):
 
 
 
-
+# .
 
 # SELECT
 #     po.orderno,
