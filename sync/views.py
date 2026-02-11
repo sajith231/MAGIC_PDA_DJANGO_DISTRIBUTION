@@ -552,10 +552,18 @@ def get_product_details(request):
             FROM acc_pricecode
             ORDER BY code
         """)
-        price_code_map = [
-            {"code": r[0].strip(), "name": r[1].strip()}
+        price_code_map = {
+            r[0].strip(): r[1].strip()
             for r in cur.fetchall()
-        ]
+        }
+
+        # 🔹 ONLY REQUIRED PRICE MAPPING
+        price_field_map = {
+            "bmrp": "MR",
+            "cost": "CO",
+            "salesprice": "S1",
+            "secondprice": "S2",
+        }
 
         cur.execute("""
             SELECT 
@@ -575,6 +583,9 @@ def get_product_details(request):
                 pb.secondprice,
                 pb.thirdprice,
                 pb.fourthprice,
+
+                pb.bmrp,
+                pb.cost,
 
                 m.name AS supplier_name,
                 pb.expirydate
@@ -597,7 +608,7 @@ def get_product_details(request):
         out = []
 
         for r in rows:
-            expiry = r[15]
+            expiry = r[17]
             if expiry:
                 expiry = expiry.isoformat() if hasattr(expiry, "isoformat") else str(expiry)
 
@@ -614,26 +625,28 @@ def get_product_details(request):
                 "barcode": r[8],
                 "quantity": _to_float(r[9]),
 
-                # ✅ FIXED
-                "supplier": r[14],
+                "supplier": r[16],
                 "expirydate": expiry,
 
                 "prices": []
             }
 
-            price_values = [r[10], r[11], r[12], r[13]]
+            # 🔥 ONLY MR, CO, S1, S2
+            price_values = {
+                "salesprice": r[10],
+                "secondprice": r[11],
+                "bmrp": r[14],
+                "cost": r[15],
+            }
 
-            for i, price_def in enumerate(price_code_map):
-                if i >= len(price_values):
-                    break
-
-                value = price_values[i] or 0
-
-                item["prices"].append({
-                    "price_code": price_def["code"],
-                    "price_name": price_def["name"],
-                    "value": f"{_to_float(value):.2f}"
-                })
+            for field, price_code in price_field_map.items():
+                value = price_values.get(field)
+                if value is not None:
+                    item["prices"].append({
+                        "price_code": price_code,
+                        "price_name": price_code_map.get(price_code, price_code),
+                        "value": f"{_to_float(value):.2f}"
+                    })
 
             out.append(item)
 
