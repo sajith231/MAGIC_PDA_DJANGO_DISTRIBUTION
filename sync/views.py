@@ -565,6 +565,32 @@ def get_product_details(request):
             "secondprice": "S2",
         }
 
+        # 🔹 FETCH GODOWN STOCK (NEW – SAFE)
+        cur.execute("""
+            SELECT
+                goddownid,
+                product,
+                barcode,
+                quantity
+            FROM acc_goddownstock
+        """)
+        stock_rows = cur.fetchall()
+
+        # 🔹 GROUP BY BARCODE
+        goddown_map = {}
+        for g in stock_rows:
+            barcode = g[2]
+            if not barcode:
+                continue
+
+            goddown_map.setdefault(barcode, []).append({
+                "goddownid": g[0],
+                "product": g[1],
+                "barcode": g[2],
+                "quantity": _to_float(g[3]),
+            })
+
+        # 🔹 MAIN PRODUCT QUERY (UNCHANGED)
         cur.execute("""
             SELECT 
                 p.code,
@@ -628,7 +654,10 @@ def get_product_details(request):
                 "supplier": r[16],
                 "expirydate": expiry,
 
-                "prices": []
+                "prices": [],
+
+                # ✅ NEW ARRAY (SAFE ADDITION)
+                "goddown_stock": goddown_map.get(r[8], [])
             }
 
             # 🔥 ONLY MR, CO, S1, S2
@@ -669,6 +698,7 @@ def get_product_details(request):
             conn.close()
         except Exception:
             pass
+
 
 
 
@@ -728,3 +758,103 @@ def get_product_details(request):
 
 # WHERE po.orderdate = TODAY()
 # ORDER BY pd.slno DESC;
+
+
+
+@jwt_required
+@require_http_methods(["GET"])
+def acc_goddown(request):
+    """
+    Returns only:
+      - goddownid
+      - name
+    from acc_goddown table
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT goddownid, name
+            FROM acc_goddown
+            ORDER BY goddownid
+        """)
+
+        rows = cur.fetchall()
+
+        data = [
+            {
+                "goddownid": r[0].strip() if r[0] else None,
+                "name": r[1].strip() if r[1] else None,
+            }
+            for r in rows
+        ]
+
+        return JsonResponse({
+            "status": "success",
+            "count": len(data),
+            "data": data
+        })
+
+    except Exception as e:
+        return JsonResponse(
+            {"detail": f"Failed to fetch godown data: {e}"},
+            status=500
+        )
+
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+
+@jwt_required
+@require_http_methods(["GET"])
+def get_users(request):
+    logging.info("👤 Users list request")
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT
+                id,
+                pass,
+                role,
+                moreoptions
+            FROM acc_users
+            ORDER BY id
+        """)
+
+        rows = cur.fetchall()
+        data = []
+
+        for r in rows:
+            data.append({
+                "id": r[0],
+                "pass": r[1],           # ⚠️ as requested
+                "role": r[2],
+                "moreoptions": r[3],
+            })
+
+        return JsonResponse({
+            "status": "success",
+            "count": len(data),
+            "data": data
+        })
+
+    except Exception as e:
+        logging.exception("get_users failed")
+        return JsonResponse(
+            {"detail": f"Failed to fetch users: {e}"},
+            status=500
+        )
+
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
