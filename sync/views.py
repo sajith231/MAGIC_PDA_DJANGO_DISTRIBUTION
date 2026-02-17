@@ -372,6 +372,12 @@ def upload_orders(request):
             "order_date": key[1],
             "userid": r.get("user_id") or r.get("userid"),
             "otype": (r.get("otype") or "O").upper(),
+
+            # ✅ NEW (SAFE)
+            "description": r.get("description"),
+            "customer": r.get("customer"),
+            "enclosures": r.get("enclosures"),
+
             "products": [],
             "charges_13_3": {k: Decimal("0.000") for k in money_keys_13_3},
             "charges_12_3": {k: Decimal("0.000") for k in money_keys_12_3},
@@ -406,12 +412,16 @@ def upload_orders(request):
             max_masterslno += 1
             masterslno = max_masterslno
 
-            supplier  = order["supplier_code"]
-            orderdate = order["order_date"]
-            userid    = order.get("userid")
-            otype     = order.get("otype", "O")
+            supplier    = order["supplier_code"]
+            orderdate   = order["order_date"]
+            userid      = order.get("userid")
+            otype       = order.get("otype", "O")
 
-            # ✅ SOLD FIELD CONDITION
+            # ✅ ONLY THESE 3 FIELDS ADDED
+            description = order.get("description")
+            customer    = order.get("customer")
+            enclosures  = order.get("enclosures")
+
             sold_value = "N"
 
             # ---------- HEADER TOTAL ----------
@@ -423,23 +433,41 @@ def upload_orders(request):
             c13 = {k: _d3(v) for k, v in order["charges_13_3"].items()}
             c12 = {k: _d3(v) for k, v in order["charges_12_3"].items()}
 
-            # ---------- INSERT MASTER ----------
+            # ---------- INSERT MASTER (ONLY UPDATED PART) ----------
             cur.execute("""
                 INSERT INTO acc_purchaseordermaster
-                    (slno, orderno, orderdate, supplier, otype, userid,
+                    (slno, orderno, orderdate, supplier,
+                     description, customer, enclosures,
+                     otype, userid,
                      total, discount, pnfcharges, exceiseduty, salestax,
                      freightcharge, othercharges, cessonED, cess, sold)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                masterslno, masterslno, orderdate, supplier, otype, userid,
+                masterslno,
+                masterslno,
+                orderdate,
+                supplier,
+
+                description,   # ✅
+                customer,      # ✅
+                enclosures,    # ✅
+
+                otype,
+                userid,
+
                 float(header_total),
-                float(c13["discount"]), float(c13["pnfcharges"]), float(c13["exceiseduty"]),
-                float(c13["salestax"]), float(c13["freightcharge"]), float(c13["othercharges"]),
-                float(c12["cessoned"]), float(c12["cess"]),
+                float(c13["discount"]),
+                float(c13["pnfcharges"]),
+                float(c13["exceiseduty"]),
+                float(c13["salestax"]),
+                float(c13["freightcharge"]),
+                float(c13["othercharges"]),
+                float(c12["cessoned"]),
+                float(c12["cess"]),
                 sold_value
             ))
 
-            # ------------ INSERT DETAILS ------------
+            # ------------ INSERT DETAILS (UNCHANGED) ------------
             for prod in (order.get("products") or []):
                 det_slno = _next_detail_slno(cur)
 
@@ -502,9 +530,11 @@ def upload_orders(request):
 
     finally:
         try:
-            cur.close(); conn.close()
+            cur.close()
+            conn.close()
         except Exception:
             pass
+
 
 
 
@@ -702,14 +732,16 @@ def get_product_details(request):
 
 
 
-# .
-
 # SELECT
 #     po.orderno,
 #     po.orderdate,
 #     po.supplier,
-#     po.otype,              -- ✅ ADDED
+#     po.otype,
 #     po.sold,
+
+#     po.description,
+#     po.customer,
+#     po.enclosures,
 
 #     po.total,
 #     po.discount,
@@ -721,21 +753,21 @@ def get_product_details(request):
 #     po.cessonED,
 #     po.cess,
 
-#     pd.slno AS detail_slno,
-#     pd.item AS product_code_or_name,
+#     pd.slno        AS detail_slno,
+#     pd.item        AS product_code_or_name,
 #     pd.barcode,
-#     pd.qty AS quantity,
-#     pd.rate AS cost,
+#     pd.qty         AS quantity,
+#     pd.rate        AS cost,
 #     pd.mrp,
 #     pd.taxcode,
 #     pd.ioflag,
 #     pd.itemdetails AS manual_item,
 
-#     p.name        AS product_name,
+#     p.name     AS product_name,
 #     p.catagory,
 #     p.brand,
 #     p.unit,
-#     p.taxcode     AS product_taxcode,
+#     p.taxcode  AS product_taxcode,
 
 #     pb.productcode,
 #     pb.quantity   AS batch_quantity,
@@ -747,17 +779,15 @@ def get_product_details(request):
 #     pb.expirydate
 
 # FROM acc_purchaseordermaster po
-# JOIN acc_purchaseorderdetails pd 
+# JOIN acc_purchaseorderdetails pd
 #        ON pd.masterslno = po.slno
-
-# LEFT JOIN acc_productbatch pb 
+# LEFT JOIN acc_productbatch pb
 #        ON pb.barcode = pd.barcode
-
-# LEFT JOIN acc_product p 
+# LEFT JOIN acc_product p
 #        ON p.code = pb.productcode
 
-# WHERE po.orderdate = TODAY()
 # ORDER BY pd.slno DESC;
+
 
 
 
