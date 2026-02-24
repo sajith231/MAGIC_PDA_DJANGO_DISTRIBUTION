@@ -63,7 +63,14 @@ DEBUG = False
 JWT_SECRET = "SyncAnywhereJWTSecret2025"
 JWT_ALGO = "HS256"
 
-API_URL = "https://activate.imcbs.com/corporate-clientid/list/"
+API_URL        = "https://activate.imcbs.com/corporate-clientid/list/"
+CLIENT_LIST_URL = "https://activate.imcbs.com/client-id-list/get-client-ids/"
+
+
+class CompanyMismatchError(Exception):
+    """Raised when company_name or place from the API does not match misel table."""
+    pass
+
 
 
 def validate_client_id(client_id: str) -> bool:
@@ -90,6 +97,91 @@ def validate_client_id(client_id: str) -> bool:
     except Exception as e:
         print(f"❌ Client validation failed: {e}")
         return False
+
+
+def validate_company_info(client_id: str, db_dsn: str) -> None:
+    """
+    Fetches company_name and place for client_id from the activation server
+    and cross-checks them against firm_name and address1 in the local misel table.
+    Raises CompanyMismatchError with a descriptive message on any mismatch.
+    """
+    import pyodbc
+
+    # ── 1. Fetch client list from activation server ──────────────────
+    try:
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(CLIENT_LIST_URL, context=ctx, timeout=10) as res:
+            payload = json.loads(res.read().decode("utf-8"))
+    except Exception as e:
+        raise CompanyMismatchError(
+            f"Cannot reach activation server to verify company info.\n\nDetails: {e}"
+        )
+
+    if not payload.get("status"):
+        raise CompanyMismatchError(
+            "Activation server returned an error response during company verification."
+        )
+
+    # Find this client's entry
+    api_company = None
+    api_place   = None
+    for entry in payload.get("data", []):
+        if entry.get("client_id") == client_id:
+            api_company = (entry.get("company_name") or "").strip()
+            api_place   = (entry.get("place") or "").strip()
+            break
+
+    if api_company is None:
+        raise CompanyMismatchError(
+            f"Client ID '{client_id}' was not found in the activation server client list."
+        )
+
+    # ── 2. Read firm_name and address1 from local misel table ────────
+    try:
+        conn_str = f"DSN={db_dsn};UID={DB_UID};PWD={DB_PWD}"
+        conn = pyodbc.connect(conn_str, autocommit=True, timeout=10)
+        cur  = conn.cursor()
+        cur.execute("SELECT firm_name, address1 FROM DBA.misel")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        raise CompanyMismatchError(
+            f"Cannot read misel table from local database.\n\nDetails: {e}"
+        )
+
+    if row is None:
+        raise CompanyMismatchError("The misel table is empty in the local database.")
+
+    db_firm_name = (row[0] or "").strip()
+    db_address1  = (row[1] or "").strip()
+
+    # ── 3. Compare (case-insensitive) ────────────────────────────────
+    name_match  = api_company.lower() == db_firm_name.lower()
+    place_match = api_place.lower()   == db_address1.lower()
+
+    if not name_match and not place_match:
+        raise CompanyMismatchError(
+            f"COMPANY NAME & PLACE MISMATCH\n\n"
+            f"  API company_name : {api_company}\n"
+            f"  DB  firm_name    : {db_firm_name}\n\n"
+            f"  API place        : {api_place}\n"
+            f"  DB  address1     : {db_address1}"
+        )
+    elif not name_match:
+        raise CompanyMismatchError(
+            f"COMPANY NAME MISMATCH\n\n"
+            f"  API company_name : {api_company}\n"
+            f"  DB  firm_name    : {db_firm_name}"
+        )
+    elif not place_match:
+        raise CompanyMismatchError(
+            f"PLACE MISMATCH\n\n"
+            f"  API place    : {api_place}\n"
+            f"  DB  address1 : {db_address1}"
+        )
+
+    print(f"✅ Company info verified — '{db_firm_name}' / '{db_address1}'")
 
 
 
@@ -161,6 +253,9 @@ def main():
         sys.exit(1)
 
     print("✅ Client verified for TASK PMS")
+
+    print("🔐 Verifying company & place against local database...")
+    validate_company_info(client_id, db_dsn)
 
     # 🔐 ENVIRONMENT
     os.environ["PAIR_PASSWORD"] = PAIR_PASSWORD

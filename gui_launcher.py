@@ -123,8 +123,16 @@ class Redirect:
             self._log(f"[{timestamp}] {icon} {method} {url} → {code}\n", tag)
             return
 
-        if "ERROR" in msg or "Exception" in msg or "Traceback" in msg:
-            self._log(f"[{timestamp}] ❌ {msg}", "error")
+        if "✅" in msg:
+            self._log(f"[{timestamp}] {msg.strip()}\n", "success")
+            return
+
+        if "🔐" in msg or "🚀 Starting" in msg:
+            self._log(f"[{timestamp}] {msg.strip()}\n", "info")
+            return
+
+        if "ERROR" in msg or "Exception" in msg or "Traceback" in msg or "❌" in msg:
+            self._log(f"[{timestamp}] {msg if '❌' in msg else '❌ ' + msg}", "error")
 
     def flush(self):
         try:
@@ -171,6 +179,19 @@ def start_backend():
         global backend_running
         try:
             SyncService.main()
+        except SyncService.CompanyMismatchError as e:
+            detail = str(e)
+            log.after(0, log.insert, tk.END,
+                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Company/Place verification failed:\n{detail}\n",
+                "error")
+            log.after(0, log.see, tk.END)
+            messagebox.showerror(
+                "Company / Place Verification Failed",
+                f"❌ The database does not match the registered client info.\n\n{detail}\n\n"
+                "Please correct firm_name or address1 in the misel table, then restart."
+            )
+            backend_running = False
+            root.after(0, update_status, False)
         except SystemExit:
             log.insert(
                 tk.END,
