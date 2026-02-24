@@ -5,6 +5,25 @@ import os
 import sys
 from tkinter import messagebox
 import ctypes
+# ===============================
+# LOAD CONFIG (DB_DSN)
+# ===============================
+import json
+
+def load_db_dsn():
+    try:
+        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+        cfg_path = os.path.join(base, "config.json")
+
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+
+        return cfg.get("DB_DSN", "NOT SET")
+    except Exception:
+        return "NOT FOUND"
+
+DB_DSN_NAME = load_db_dsn()
+
 
 if os.name == "nt":
     try:
@@ -296,6 +315,14 @@ tk.Label(
     fg="#64748b",
     bg="#ffffff"
 ).pack(anchor="w")
+
+tk.Label(
+    title_container,
+    text=f"🗄 Database DSN: {DB_DSN_NAME}",
+    font=("Segoe UI", 10, "bold"),
+    fg="#2563eb",
+    bg="#ffffff"
+).pack(anchor="w", pady=(4, 0))
 
 # Right side - Status and Controls
 right_section = tk.Frame(header_content, bg="#ffffff")
