@@ -888,3 +888,55 @@ def get_users(request):
             conn.close()
         except Exception:
             pass
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def download2(request):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                p.name,
+                b.bmrp,
+                b.salesprice,
+                b.cost,
+                b.quantity,
+                b.barcode
+            FROM DBA.acc_product p
+            JOIN DBA.acc_productbatch b
+                ON p.code = b.productcode
+        """)
+
+        rows = cur.fetchall()
+
+        data = [
+            {
+                "name": r[0],
+                "bmrp": float(r[1]) if r[1] is not None else None,
+                "salesprice": float(r[2]) if r[2] is not None else None,
+                "cost": float(r[3]) if r[3] is not None else None,
+                "quantity": float(r[4]) if r[4] is not None else None,
+                "barcode": r[5],
+            }
+            for r in rows
+        ]
+
+        return Response(data)
+
+    except Exception as e:
+        logging.exception("download2 failed")
+        return Response({"detail": str(e)}, status=500)
+
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
