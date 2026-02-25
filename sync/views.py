@@ -484,7 +484,7 @@ def upload_orders(request):
 
                 item_value = (item_value or "UNKNOWN").strip()[:30]
                 final_barcode = (final_barcode or "NOBARCODE").strip()
-                itemdetails_value = item_value if ioflag == -100 else None
+                itemdetails_value = item_value if ioflag in (-100, -101) else None
                 taxcode_value = "NT"
 
                 cur.execute("""

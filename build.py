@@ -15,7 +15,7 @@ EXTRA_DATA = [
     ("django_sync", "django_sync"),
     ("db.sqlite3", "."),
     ("imcbs_logo.png", "."),
-    ("pms_icone.ico", "."),   # optional
+    ("pms_icone.ico", "."),   # optional````````````````````````````````````````````````````````````````````````````````
     ("pms_icone.png", "."),
 ]
 
