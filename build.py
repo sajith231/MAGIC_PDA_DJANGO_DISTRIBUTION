@@ -1,4 +1,4 @@
-# build.py — AUTO multi-exe packager for TASK PMS SYNC (GUI + SyncService)
+# build.py — AUTO packager for TASK PMS SYNC (single EXE — SyncService is bundled inside)
 import os
 import sys
 import subprocess
@@ -7,7 +7,7 @@ import venv
 
 PROJECT_NAME = "TASK_PMS_SYNC"
 GUI_ENTRY = "gui_launcher.py"
-SERVICE_ENTRY = "SyncService.py"
+# SyncService.py is imported by gui_launcher.py and bundled automatically inside TASK_PMS_SYNC.exe
 
 # Files & folders that MUST travel with the EXE
 EXTRA_DATA = [
@@ -62,7 +62,7 @@ def build():
     run([py, "-m", "pip", "install", *REQUIREMENTS])
 
     # Clean old builds
-    for p in (BUILD_DIR, DIST_DIR, DIST_ROOT, f"{PROJECT_NAME}.spec", "SyncService.spec"):
+    for p in (BUILD_DIR, DIST_DIR, DIST_ROOT, f"{PROJECT_NAME}.spec"):
         if os.path.exists(p):
             shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
 
@@ -97,37 +97,18 @@ def build():
     ]
 
 
-    print("\n🚀 Building GUI EXE …")
+    print("\n🚀 Building TASK_PMS_SYNC EXE …")
     run(gui_cmd)
 
     # =================================================
-    # 2️⃣ BUILD SyncService EXE (BACKGROUND WORKER)
-    # =================================================
-    service_cmd = [
-        py, "-m", "PyInstaller",
-        "--onefile",
-        "--noconsole",
-        "--name=SyncService",
-        SERVICE_ENTRY,
-    ]
-
-    print("\n🚀 Building SyncService EXE …")
-    run(service_cmd)
-
-    # =================================================
-    # 3️⃣ FINAL DISTRIBUTION FOLDER
+    # 2️⃣ FINAL DISTRIBUTION FOLDER
     # =================================================
     os.makedirs(DIST_ROOT, exist_ok=True)
 
-    # Copy EXEs
+    # Copy EXE (SyncService is already bundled inside TASK_PMS_SYNC.exe)
     shutil.copy2(
         os.path.join(DIST_DIR, f"{PROJECT_NAME}.exe"),
         os.path.join(DIST_ROOT, f"{PROJECT_NAME}.exe"),
-    )
-
-    shutil.copy2(
-        os.path.join(DIST_DIR, "SyncService.exe"),
-        os.path.join(DIST_ROOT, "SyncService.exe"),
     )
 
     # Copy assets + config
@@ -144,7 +125,7 @@ def build():
 
     print("\n✅ BUILD SUCCESSFUL")
     print("📦 Final folder:", os.path.abspath(DIST_ROOT))
-    print("✔ GUI + SyncService bundled correctly")
+    print("✔ TASK_PMS_SYNC.exe built — SyncService is bundled inside")
 
 
 # -------------------------------------------------

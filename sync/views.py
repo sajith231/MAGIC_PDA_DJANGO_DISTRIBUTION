@@ -97,29 +97,14 @@ def pair_check(request):
         logging.error("❌ Invalid password")
         return JsonResponse({"detail": "Invalid password"}, status=401)
 
-    exe_name = "SyncService.exe"
-    base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
-    exe_path = os.path.join(base_dir, exe_name)
-
-    if not os.path.exists(exe_path):
-        logging.error("❌ SyncService.exe not found at %s", exe_path)
-        return JsonResponse({"detail": "SyncService.exe not found"}, status=404)
-
-    for proc in psutil.process_iter(["pid", "name"]):
-        try:
-            if proc.info["name"] and "SyncService.exe" in proc.info["name"]:
-                logging.info("🔄 SyncService already running (PID %s)", proc.info["pid"])
-                return JsonResponse({"status": "success", "message": "SyncService already running", "pair_successful": True})
-        except Exception:
-            continue
-
-    try:
-        subprocess.Popen([exe_path], cwd=base_dir)
-        logging.info("✅ SyncService started")
-        return JsonResponse({"status": "success", "message": "SyncService launched successfully", "pair_successful": True})
-    except Exception as e:
-        logging.error("❌ Failed to start SyncService: %s", e)
-        return JsonResponse({"detail": f"Failed to start sync service: {e}"}, status=500)
+    # ✅ SyncService is bundled inside TASK_PMS_SYNC.exe and already running
+    # in the same process — no external EXE to find or launch.
+    logging.info("✅ Pair check successful — SyncService is running inside TASK_PMS_SYNC.exe")
+    return JsonResponse({
+        "status": "success",
+        "message": "SyncService is running",
+        "pair_successful": True
+    })
 
 
 @csrf_exempt
