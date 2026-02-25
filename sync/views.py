@@ -484,9 +484,45 @@ def upload_orders(request):
                 final_barcode = barcode
 
                 if ioflag == -100:
+                    # existing manual logic (unchanged)
                     item_value = manual_item or manual_code or "Manual Entry"
+                    itemdetails_value = item_value
                     final_barcode = manual_code or final_barcode or "MANUAL"
+
+                elif ioflag == -101:
+                    product_code = None
+
+                    # 🔎 check EXISTING product by NAME
+                    if manual_item:
+                        cur.execute(
+                            "SELECT code FROM acc_product WHERE name = ?",
+                            (manual_item,)
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            product_code = row[0]
+
+                    if product_code:
+                        # ✅ ONLY existing products allowed
+                        item_value = product_code
+                        itemdetails_value = manual_item
+                        final_barcode = manual_code or final_barcode or "MANUAL"
+                    else:
+                        # ❌ not existing → behave like NORMAL item
+                        if barcode:
+                            cur.execute(
+                                "SELECT productcode FROM acc_productbatch WHERE barcode = ?",
+                                (barcode,)
+                            )
+                            row = cur.fetchone()
+                            if row:
+                                product_code = row[0]
+
+                        item_value = product_code or barcode or "UNKNOWN"
+                        itemdetails_value = None
+
                 else:
+                    # normal items (unchanged)
                     if barcode:
                         cur.execute(
                             "SELECT productcode FROM acc_productbatch WHERE barcode = ?",
@@ -495,11 +531,12 @@ def upload_orders(request):
                         row = cur.fetchone()
                         if row:
                             product_code = row[0]
+
                     item_value = product_code or barcode or "UNKNOWN"
+                    itemdetails_value = None
 
                 item_value = (item_value or "UNKNOWN").strip()[:30]
                 final_barcode = (final_barcode or "NOBARCODE").strip()
-                itemdetails_value = item_value if ioflag == -100 else None
                 taxcode_value = "NT"
 
                 cur.execute("""
