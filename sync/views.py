@@ -930,6 +930,9 @@ def get_users(request):
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -940,6 +943,7 @@ def download2(request):
 
         cur.execute("""
             SELECT
+                p.code,        -- ✅ productcode added
                 p.name,
                 b.bmrp,
                 b.salesprice,
@@ -955,12 +959,13 @@ def download2(request):
 
         data = [
             {
-                "name": r[0],
-                "bmrp": float(r[1]) if r[1] is not None else None,
-                "salesprice": float(r[2]) if r[2] is not None else None,
-                "cost": float(r[3]) if r[3] is not None else None,
-                "quantity": float(r[4]) if r[4] is not None else None,
-                "barcode": r[5],
+                "productcode": r[0],     # ✅ added
+                "name": r[1],
+                "bmrp": float(r[2]) if r[2] is not None else None,
+                "salesprice": float(r[3]) if r[3] is not None else None,
+                "cost": float(r[4]) if r[4] is not None else None,
+                "quantity": float(r[5]) if r[5] is not None else None,
+                "barcode": r[6],
             }
             for r in rows
         ]
