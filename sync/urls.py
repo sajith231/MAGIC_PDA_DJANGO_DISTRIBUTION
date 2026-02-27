@@ -11,8 +11,6 @@ urlpatterns = [
     path("product-details", views.get_product_details, name="get_product_details"),
     path("acc-goddown", views.acc_goddown, name="acc_goddown"),
     path("users", views.get_users, name="get_users"),
-
-    path("download2",         views.download2,         name="download2"),
     
 
 ]
