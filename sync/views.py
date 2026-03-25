@@ -349,7 +349,6 @@ def upload_orders(request):
     def _d3(x):
         return (_to_decimal(x)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
 
-    # ------------ GROUPING ------------
     groups = {}
     for r in raw_orders:
         key = (str(r.get("supplier_code") or "").strip(),
@@ -360,12 +359,9 @@ def upload_orders(request):
             "order_date": key[1],
             "userid": r.get("user_id") or r.get("userid"),
             "otype": (r.get("otype") or "O").upper(),
-
-            # ✅ NEW (SAFE)
             "description": r.get("description"),
             "customer": r.get("customer"),
             "enclosures": r.get("enclosures"),
-
             "products": [],
             "charges_13_3": {k: Decimal("0.000") for k in money_keys_13_3},
             "charges_12_3": {k: Decimal("0.000") for k in money_keys_12_3},
@@ -378,7 +374,9 @@ def upload_orders(request):
             "mrp":      r.get("mrp"),
             "ioflag":   r.get("ioflag"),
             "code":     r.get("code"),
-            "item":     r.get("item")
+            "item":     r.get("item"),
+            "cost":     r.get("cost"),
+            "text1":    r.get("text1")
         })
 
         for k in money_keys_13_3:
@@ -387,7 +385,6 @@ def upload_orders(request):
             g["charges_12_3"][k] += _to_decimal(r.get(k, 0))
 
     orders = list(groups.values())
-    logging.info("🧩 Normalized into %s grouped entries", len(orders))
 
     conn = get_connection()
     cur  = conn.cursor()
@@ -405,23 +402,26 @@ def upload_orders(request):
             userid      = order.get("userid")
             otype       = order.get("otype", "O")
 
-            # ✅ ONLY THESE 3 FIELDS ADDED
             description = order.get("description")
             customer    = order.get("customer")
             enclosures  = order.get("enclosures")
 
             sold_value = "N"
 
-            # ---------- HEADER TOTAL ----------
             header_total = Decimal("0")
             for prod in (order.get("products") or []):
-                header_total += _to_decimal(prod.get("quantity")) * _to_decimal(prod.get("rate"))
+                qty = _to_decimal(prod.get("quantity"))
+                if otype == "O" and not prod.get("barcode"):
+                    rate_val = _to_decimal(prod.get("cost") or prod.get("rate"))
+                else:
+                    rate_val = _to_decimal(prod.get("rate"))
+                header_total += qty * rate_val
+
             header_total = header_total.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
 
             c13 = {k: _d3(v) for k, v in order["charges_13_3"].items()}
             c12 = {k: _d3(v) for k, v in order["charges_12_3"].items()}
 
-            # ---------- INSERT MASTER (ONLY UPDATED PART) ----------
             cur.execute("""
                 INSERT INTO acc_purchaseordermaster
                     (slno, orderno, orderdate, supplier,
@@ -431,18 +431,9 @@ def upload_orders(request):
                      freightcharge, othercharges, cessonED, cess, sold)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                masterslno,
-                masterslno,
-                orderdate,
-                supplier,
-
-                description,   # ✅
-                customer,      # ✅
-                enclosures,    # ✅
-
-                otype,
-                userid,
-
+                masterslno, masterslno, orderdate, supplier,
+                description, customer, enclosures,
+                otype, userid,
                 float(header_total),
                 float(c13["discount"]),
                 float(c13["pnfcharges"]),
@@ -455,15 +446,15 @@ def upload_orders(request):
                 sold_value
             ))
 
-            # ------------ INSERT DETAILS (UNCHANGED) ------------
             for prod in (order.get("products") or []):
                 det_slno = _next_detail_slno(cur)
 
                 qty  = _to_float(prod.get("quantity"))
-                rate = _to_float(prod.get("rate"))
                 mrp  = _to_float(prod.get("mrp"))
                 barcode = str(prod.get("barcode") or "").strip()
                 ioflag  = prod.get("ioflag")
+                text1_value = prod.get("text1")
+                moredetails_value = prod.get("text1")
 
                 manual_code = str(prod.get("code") or "").strip()
                 manual_item = str(prod.get("item") or "").strip()
@@ -471,37 +462,33 @@ def upload_orders(request):
                 product_code = None
                 final_barcode = barcode
 
-                if ioflag == -100:
-                    # existing manual logic (unchanged)
+                if otype == "O" and not barcode:
+                    item_value = manual_item
+                    itemdetails_value = manual_item
+                    final_barcode = None
+                    ioflag = -102
+                    rate = _to_float(prod.get("cost") or prod.get("rate"))
+
+                elif ioflag == -100:
                     item_value = manual_item or manual_code or "Manual Entry"
                     itemdetails_value = item_value
                     final_barcode = manual_code or final_barcode or "MANUAL"
+                    rate = _to_float(prod.get("rate"))
 
                 elif ioflag == -101:
-                    product_code = None
-
-                    # 🔎 check EXISTING product by NAME
                     if manual_item:
-                        cur.execute(
-                            "SELECT code FROM acc_product WHERE name = ?",
-                            (manual_item,)
-                        )
+                        cur.execute("SELECT code FROM acc_product WHERE name = ?", (manual_item,))
                         row = cur.fetchone()
                         if row:
                             product_code = row[0]
 
                     if product_code:
-                        # ✅ ONLY existing products allowed
                         item_value = product_code
                         itemdetails_value = manual_item
                         final_barcode = manual_code or final_barcode or "MANUAL"
                     else:
-                        # ❌ not existing → behave like NORMAL item
                         if barcode:
-                            cur.execute(
-                                "SELECT productcode FROM acc_productbatch WHERE barcode = ?",
-                                (barcode,)
-                            )
+                            cur.execute("SELECT productcode FROM acc_productbatch WHERE barcode = ?", (barcode,))
                             row = cur.fetchone()
                             if row:
                                 product_code = row[0]
@@ -509,33 +496,37 @@ def upload_orders(request):
                         item_value = product_code or barcode or "UNKNOWN"
                         itemdetails_value = None
 
+                    rate = _to_float(prod.get("rate"))
+
                 else:
-                    # normal items (unchanged)
                     if barcode:
-                        cur.execute(
-                            "SELECT productcode FROM acc_productbatch WHERE barcode = ?",
-                            (barcode,)
-                        )
+                        cur.execute("SELECT productcode FROM acc_productbatch WHERE barcode = ?", (barcode,))
                         row = cur.fetchone()
                         if row:
                             product_code = row[0]
 
                     item_value = product_code or barcode or "UNKNOWN"
                     itemdetails_value = None
+                    rate = _to_float(prod.get("rate"))
 
                 item_value = (item_value or "UNKNOWN").strip()[:30]
-                final_barcode = (final_barcode or "NOBARCODE").strip()
+
+                if final_barcode:
+                    final_barcode = final_barcode.strip()
+
                 taxcode_value = "NT"
 
                 cur.execute("""
                     INSERT INTO acc_purchaseorderdetails
                         (slno, masterslno, item, barcode, qty, rate, mrp,
-                         taxcode, ioflag, itemdetails)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         taxcode, ioflag, itemdetails, text1, moredetails)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     det_slno, masterslno, item_value, final_barcode,
                     qty, rate, mrp, taxcode_value, ioflag,
-                    itemdetails_value
+                    itemdetails_value,
+                    text1_value,
+                    moredetails_value
                 ))
 
             created.append(masterslno)
@@ -559,7 +550,6 @@ def upload_orders(request):
             conn.close()
         except Exception:
             pass
-
 
 
 
