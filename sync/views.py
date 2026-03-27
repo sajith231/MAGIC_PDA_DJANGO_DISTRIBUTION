@@ -452,7 +452,7 @@ def upload_orders(request):
                 qty  = _to_float(prod.get("quantity"))
                 mrp  = _to_float(prod.get("mrp"))
                 barcode = str(prod.get("barcode") or "").strip()
-                ioflag  = prod.get("ioflag")
+                ioflag  = prod.get("ioflag")   # ✅ API controlled
                 text1_value = prod.get("text1")
                 moredetails_value = prod.get("text1")
 
@@ -466,7 +466,6 @@ def upload_orders(request):
                     item_value = manual_item
                     itemdetails_value = manual_item
                     final_barcode = None
-                    ioflag = -102
                     rate = _to_float(prod.get("cost") or prod.get("rate"))
 
                 elif ioflag == -100:
