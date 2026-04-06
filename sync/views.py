@@ -904,3 +904,84 @@ def get_users(request):
             pass
 
 
+
+
+@csrf_exempt
+@jwt_required
+@require_http_methods(["POST"])
+def stock_upload(request):
+    try:
+        payload = json.loads(request.body or b"{}")
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    rows = payload.get("orders") or []
+    if not rows:
+        return JsonResponse({"detail": "No orders supplied"}, status=400)
+
+    logging.info("📤 Uploading %s rows to acc_purchaseorderdetails ONLY", len(rows))
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        # 🔢 get last slno
+        cur.execute("SELECT MAX(slno) FROM acc_purchaseorderdetails")
+        last_slno = int(cur.fetchone()[0] or 0)
+
+        inserted = []
+
+        for row in rows:
+            last_slno += 1
+
+            slno        = last_slno
+            masterslno = -1000                        # ✅ fixed value
+
+            item    = (row.get("item") or "").strip()[:30]
+            qty     = _to_decimal(row.get("qty"))
+            remark  = row.get("remark")
+            barcode = (row.get("barcode") or "").strip()
+            date1   = _coerce_date(row.get("date1"))
+            text1   = row.get("text1")
+            mrp     = _to_decimal(row.get("mrp"))
+
+            cur.execute("""
+                INSERT INTO acc_purchaseorderdetails
+                    (slno, masterslno, item, qty, remark,
+                     barcode, date1, text1, mrp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                slno,
+                masterslno,
+                item,
+                float(qty),
+                remark,
+                barcode,
+                date1,
+                text1,
+                float(mrp)
+            ))
+
+            inserted.append(slno)
+
+        conn.commit()
+
+        return JsonResponse({
+            "status": "success",
+            "message": "Details inserted successfully",
+            "rows_inserted": len(inserted),
+            "slno_list": inserted
+        })
+
+    except Exception as exc:
+        conn.rollback()
+        logging.exception("❌ Upload failed")
+        return JsonResponse({"detail": f"Upload failed: {exc}"}, status=500)
+
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+

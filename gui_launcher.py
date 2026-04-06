@@ -36,20 +36,39 @@ if os.name == "nt":
 
 # ===============================
 # SINGLE INSTANCE CHECK (WINDOWS)
+# Uses a mutex to detect duplicates.
+# Uses a local socket so the 2nd instance
+# can tell the 1st to restore its window.
 # ===============================
+_INSTANCE_PORT = 47832          # arbitrary local port for IPC
+_INSTANCE_MAGIC = b"SHOW_WINDOW"
+
 mutex_name = "TASK_PMS_SYNC_TOOL_SINGLE_INSTANCE"
-
-mutex = ctypes.windll.kernel32.CreateMutexW(
-    None, False, mutex_name
-)
-
+mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
 ERROR_ALREADY_EXISTS = 183
 
 if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+    # ── Another instance is running ──
+    # Signal it to restore its window, then exit quietly.
+    import socket as _sock
+    try:
+        s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect(("127.0.0.1", _INSTANCE_PORT))
+        s.sendall(_INSTANCE_MAGIC)
+        s.close()
+    except Exception:
+        pass
+
+    # Always show the "already running" info box so the user knows.
+    import tkinter as _tk
+    _r = _tk.Tk()
+    _r.withdraw()
     messagebox.showinfo(
         "Already Running",
-        "TASK PMS Sync Tool is already running.\n\nPlease check the existing window."
+        "TASK PMS Sync Tool is already running.\n\nThe existing window has been restored."
     )
+    _r.destroy()
     sys.exit(0)
 
 # ===============================
@@ -64,6 +83,7 @@ import webbrowser
 from datetime import datetime
 
 from PIL import Image, ImageTk
+import pystray
 import SyncService
 
 PORT = 8000
@@ -143,6 +163,63 @@ class Redirect:
     def _log(self, text, tag):
         self.widget.after(0, self.widget.insert, tk.END, text, tag)
         self.widget.after(0, self.widget.see, tk.END)
+
+# ===============================
+# AUTO-RESTART EVERY 3 HOURS
+# ===============================
+AUTO_RESTART_SECONDS = 3 * 60 * 60   # 3 hours
+
+_restart_label   = None   # tk.Label — filled in after GUI is built
+_restart_after_id = None  # tk.after handle
+
+def _format_countdown(seconds_left):
+    h = seconds_left // 3600
+    m = (seconds_left % 3600) // 60
+    s = seconds_left % 60
+    return f"🔄 Auto-restart in {h:02d}:{m:02d}:{s:02d}"
+
+def _do_process_restart():
+    """Hard-restart the whole EXE — cleanest way to reset Django."""
+    try:
+        import subprocess
+        exe = sys.executable          # path to the running .exe (or python)
+        args = sys.argv[:]
+        subprocess.Popen([exe] + args[1:])
+    except Exception:
+        pass
+    os._exit(0)
+
+def _countdown_tick(seconds_left):
+    global _restart_after_id
+
+    if _restart_label:
+        try:
+            if seconds_left > 0:
+                _restart_label.config(text=_format_countdown(seconds_left))
+            else:
+                _restart_label.config(text="🔄 Restarting now…")
+        except Exception:
+            pass
+
+    if seconds_left <= 0:
+        # Log the restart event
+        try:
+            ts = datetime.now().strftime("%H:%M:%S")
+            log.insert(tk.END,
+                f"[{ts}] 🔄 Auto-restart triggered (3-hour cycle)\n", "info")
+            log.see(tk.END)
+        except Exception:
+            pass
+        # Give tkinter 600 ms to render the label, then restart
+        root.after(600, _do_process_restart)
+        return
+
+    _restart_after_id = root.after(1000, _countdown_tick, seconds_left - 1)
+
+def start_auto_restart_timer():
+    """Call once after GUI is fully built to begin the countdown."""
+    _countdown_tick(AUTO_RESTART_SECONDS)
+
 
 # ===============================
 # BACKEND CONTROL
@@ -273,6 +350,7 @@ style.theme_use('clam')
 style.configure("Header.TFrame", background="#ffffff")
 style.configure("Main.TFrame", background="#f8fafc")
 style.configure("Card.TFrame", background="#ffffff", relief="flat")
+
 style.configure("Title.TLabel", background="#ffffff", font=("Segoe UI", 22, "bold"), foreground="#0f172a")
 style.configure("Subtitle.TLabel", background="#ffffff", font=("Segoe UI", 11), foreground="#64748b")
 style.configure("Status.TLabel", background="#ffffff", font=("Segoe UI", 10, "bold"))
@@ -615,6 +693,16 @@ tk.Label(
     bg="#ffffff"
 ).pack()
 
+# ── Auto-restart countdown label (right side of footer) ──
+_restart_label = tk.Label(
+    footer_content,
+    text=_format_countdown(AUTO_RESTART_SECONDS),
+    font=("Segoe UI", 9),
+    fg="#94a3b8",
+    bg="#ffffff"
+)
+_restart_label.pack(pady=(4, 0))
+
 # ===============================
 # REDIRECT STDOUT SAFELY
 # ===============================
@@ -626,5 +714,100 @@ sys.stderr = Redirect(log, _real_stderr)
 
 # Initialize status
 update_status(False)
+
+# ===============================
+# SYSTEM TRAY ICON
+# ===============================
+def create_tray_image():
+    """Load pms_icone.png for tray; fallback to plain blue square."""
+    try:
+        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+        img = Image.open(os.path.join(base, "pms_icone.png")).resize((64, 64), Image.Resampling.LANCZOS).convert("RGBA")
+        return img
+    except Exception:
+        img = Image.new("RGBA", (64, 64), color=(37, 99, 235, 255))
+        return img
+
+tray_icon = None  # global reference
+
+def bring_to_front():
+    """Restore and focus the main window (called from any thread)."""
+    root.after(0, _do_bring_to_front)
+
+def _do_bring_to_front():
+    root.deiconify()
+    root.lift()
+    root.focus_force()
+    # Flash the taskbar button so the user notices
+    try:
+        root.attributes("-topmost", True)
+        root.after(200, lambda: root.attributes("-topmost", False))
+    except Exception:
+        pass
+
+def show_window(icon, item):
+    """Restore main window from tray."""
+    bring_to_front()
+
+def quit_app(icon, item):
+    """Fully quit the application."""
+    icon.stop()
+    os._exit(0)
+
+def on_close_to_tray():
+    """Hide window to tray when X is clicked — do NOT exit."""
+    root.withdraw()
+
+def start_tray():
+    """Start tray icon immediately in background thread."""
+    global tray_icon
+    tray_menu = pystray.Menu(
+        pystray.MenuItem("Open TASK PMS Sync", show_window, default=True),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Quit", quit_app),
+    )
+    tray_icon = pystray.Icon(
+        "TASK_PMS_SYNC",
+        create_tray_image(),
+        "TASK PMS Sync Tool",
+        tray_menu,
+    )
+    threading.Thread(target=tray_icon.run, daemon=True).start()
+
+# X button -> hide to tray instead of closing
+root.protocol("WM_DELETE_WINDOW", on_close_to_tray)
+
+# Show in system tray immediately when app starts
+start_tray()
+
+# ===============================
+# IPC LISTENER  ← NEW
+# Listens on localhost for a signal from a second instance.
+# When received, restores the window to the foreground.
+# ===============================
+def _ipc_listener():
+    """Background thread: accepts one connection, reads magic bytes, restores window."""
+    try:
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", _INSTANCE_PORT))
+        srv.listen(5)
+        srv.settimeout(None)          # block forever — daemon thread exits with app
+        while True:
+            try:
+                conn, _ = srv.accept()
+                data = conn.recv(64)
+                conn.close()
+                if data.strip() == _INSTANCE_MAGIC:
+                    bring_to_front()
+            except Exception:
+                pass
+    except Exception:
+        pass   # port already in use or other error — non-fatal
+
+threading.Thread(target=_ipc_listener, daemon=True).start()
+
+# Kick off the 3-hour auto-restart countdown
+start_auto_restart_timer()
 
 root.mainloop()

@@ -28,6 +28,7 @@ REQUIREMENTS = [
     "Pillow",
     "djangorestframework",
     "django-cors-headers",
+    "pystray",
 ]
 
 DIST_ROOT = f"{PROJECT_NAME.lower()}_dist"
@@ -91,6 +92,8 @@ def build():
         "--hidden-import=django.apps",
         "--hidden-import=django.urls",
         "--hidden-import=django.http",
+        "--hidden-import=pystray",
+        "--hidden-import=pystray._win32",
 
         *add_data,
         GUI_ENTRY,
