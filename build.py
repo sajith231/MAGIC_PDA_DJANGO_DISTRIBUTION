@@ -79,7 +79,7 @@ def build():
     # =================================================
     gui_cmd = [
         py, "-m", "PyInstaller",
-        "--onefile",
+        "--onedir",                 # ✅ FIXED: prevents _MEI temp cleanup after 3 hours
         "--noconsole",              # ✅ IMPORTANT: NO TERMINAL WINDOW
         f"--name={PROJECT_NAME}",
         "--icon=pms_icone.ico",   # ✅ ADD THIS LINE
@@ -99,7 +99,6 @@ def build():
         GUI_ENTRY,
     ]
 
-
     print("\n🚀 Building TASK_PMS_SYNC EXE …")
     run(gui_cmd)
 
@@ -108,11 +107,15 @@ def build():
     # =================================================
     os.makedirs(DIST_ROOT, exist_ok=True)
 
-    # Copy EXE (SyncService is already bundled inside TASK_PMS_SYNC.exe)
-    shutil.copy2(
-        os.path.join(DIST_DIR, f"{PROJECT_NAME}.exe"),
-        os.path.join(DIST_ROOT, f"{PROJECT_NAME}.exe"),
-    )
+    # Copy all files from onedir output directly into DIST_ROOT (same folder style as before)
+    onedir_src = os.path.join(DIST_DIR, PROJECT_NAME)
+    for item in os.listdir(onedir_src):
+        s = os.path.join(onedir_src, item)
+        d = os.path.join(DIST_ROOT, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, dirs_exist_ok=True)
+        else:
+            shutil.copy2(s, d)
 
     # Copy assets + config
     for src, dst in EXTRA_DATA:

@@ -77,26 +77,25 @@ def validate_client_id(client_id: str) -> bool:
     """
     Returns True only if client_id exists
     AND project list contains 'TASK PMS'
+    Retries 3 times to handle temp folder cleanup issues.
     """
-    try:
-        ctx = ssl.create_default_context()
-        with urllib.request.urlopen(API_URL, context=ctx, timeout=10) as res:
-            payload = json.loads(res.read().decode("utf-8"))
-
-        if not payload.get("success"):
+    import time
+    for attempt in range(3):
+        try:
+            ctx = ssl.create_default_context()
+            with urllib.request.urlopen(API_URL, context=ctx, timeout=15) as res:
+                payload = json.loads(res.read().decode("utf-8"))
+            if not payload.get("success"):
+                return False
+            for corp in payload.get("data", []):
+                for shop in corp.get("shops", []):
+                    if shop.get("client_id") == client_id:
+                        return "TASK PMS" in shop.get("projects", [])
             return False
-
-        for corp in payload.get("data", []):
-            for shop in corp.get("shops", []):
-                if shop.get("client_id") == client_id:
-                    projects = shop.get("projects", [])
-                    return "TASK PMS" in projects
-
-        return False
-
-    except Exception as e:
-        print(f"❌ Client validation failed: {e}")
-        return False
+        except Exception as e:
+            print(f"⚠️ Attempt {attempt+1} failed: {e}")
+            time.sleep(5)
+    return False
 
 
 def validate_company_info(client_id: str, db_dsn: str) -> None:

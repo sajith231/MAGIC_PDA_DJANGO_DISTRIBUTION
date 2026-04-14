@@ -132,6 +132,7 @@ class Redirect:
 
         if "Backend running on" in msg or "Starting development server at" in msg:
             self._log(f"[{timestamp}] 🟢 Backend running on http://{LOCAL_IP}:{PORT}\n", "success")
+            self.widget.after(500, _on_backend_confirmed_running)
             return
 
         m = self.http.search(msg)
@@ -227,6 +228,7 @@ def start_auto_restart_timer():
 backend_running = False
 status_label = None
 status_indicator = None
+tray_icon = None  # forward-declared so update_status can reference it safely
 
 def update_status(running):
     """Update status indicator and label"""
@@ -236,11 +238,32 @@ def update_status(running):
             status_label.config(text="ONLINE", foreground="#22c55e")
             start_btn.config(state="disabled")
             stop_btn.config(state="normal")
+            if tray_icon:
+                try:
+                    tray_icon.title = "TASK PMS Sync Tool — ONLINE"
+                except Exception:
+                    pass
         else:
             status_indicator.config(bg="#ef4444")
             status_label.config(text="OFFLINE", foreground="#ef4444")
             start_btn.config(state="normal")
             stop_btn.config(state="disabled")
+            if tray_icon:
+                try:
+                    tray_icon.title = "TASK PMS Sync Tool — OFFLINE"
+                except Exception:
+                    pass
+
+_backend_hide_done = False  # fire only once per session
+
+def _on_backend_confirmed_running():
+    """Called from main thread exactly once when Django server is confirmed up."""
+    global _backend_hide_done
+    if _backend_hide_done:
+        return
+    _backend_hide_done = True
+    root.withdraw()  # silently hide to tray — no popup
+
 
 def start_backend():
     global backend_running
@@ -330,10 +353,12 @@ def copy_url():
 # ===============================
 root = tk.Tk()
 
-# 🔹 Window / Taskbar Icon
+# 🔹 Window / Taskbar Icon — use PNG via wm_iconphoto (works reliably in frozen EXE)
 try:
     base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    root.iconbitmap(os.path.join(base, "pms_icone.ico"))
+    _icon_img = Image.open(os.path.join(base, "pms_icone.png")).resize((64, 64), Image.Resampling.LANCZOS)
+    _icon_photo = ImageTk.PhotoImage(_icon_img)
+    root.wm_iconphoto(True, _icon_photo)
 except Exception:
     pass
 
@@ -341,6 +366,19 @@ root.title("TASK PMS Sync Tool - Professional Edition")
 root.geometry("1200x700")
 root.resizable(True, True)
 root.configure(bg="#f8fafc")
+
+# ── Remove MINIMIZE button via Windows API ──
+def _remove_minimize_button():
+    try:
+        GWL_STYLE      = -16
+        WS_MINIMIZEBOX = 0x00020000
+        hwnd = ctypes.windll.user32.FindWindowW(None, "TASK PMS Sync Tool - Professional Edition")
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style & ~WS_MINIMIZEBOX)
+    except Exception:
+        pass
+
+root.after(100, _remove_minimize_button)
 
 # Custom Style
 style = ttk.Style()
@@ -727,8 +765,6 @@ def create_tray_image():
     except Exception:
         img = Image.new("RGBA", (64, 64), color=(37, 99, 235, 255))
         return img
-
-tray_icon = None  # global reference
 
 def bring_to_front():
     """Restore and focus the main window (called from any thread)."""
