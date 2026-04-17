@@ -138,6 +138,9 @@ class Redirect:
         m = self.http.search(msg)
         if m:
             method, url, code = m.groups()
+            # Silently ignore ONVIF camera discovery requests — not related to TASK PMS
+            if "onvif" in url.lower():
+                return
             code = int(code)
             icon = "✅" if code < 400 else "❌"
             tag = "success" if code < 400 else "error"
@@ -185,7 +188,7 @@ def _do_process_restart():
         import subprocess
         exe = sys.executable          # path to the running .exe (or python)
         args = sys.argv[:]
-        subprocess.Popen([exe] + args[1:])
+        subprocess.Popen([exe] + args[1:] + ["--autostart"])
     except Exception:
         pass
     os._exit(0)
@@ -207,10 +210,13 @@ def _countdown_tick(seconds_left):
         try:
             ts = datetime.now().strftime("%H:%M:%S")
             log.insert(tk.END,
-                f"[{ts}] 🔄 Auto-restart triggered (3-hour cycle)\n", "info")
+                f"[{ts}] 🔄 Auto-restart triggered (1-minute cycle)\n", "info")
+            log.insert(tk.END,
+                f"[{ts}] ⚠️ Restarting now — service will resume automatically...\n", "info")
             log.see(tk.END)
         except Exception:
             pass
+
         # Give tkinter 600 ms to render the label, then restart
         root.after(600, _do_process_restart)
         return
@@ -845,5 +851,13 @@ threading.Thread(target=_ipc_listener, daemon=True).start()
 
 # Kick off the 3-hour auto-restart countdown
 start_auto_restart_timer()
+
+# ===============================
+# AUTO-START ON TIMER RELAUNCH ONLY
+# ===============================
+# First launch → user must click Start Service manually.
+# After auto-restart (timer relaunch) → start automatically.
+if "--autostart" in sys.argv:
+    root.after(1000, start_backend)
 
 root.mainloop()
