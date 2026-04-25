@@ -634,7 +634,7 @@ def get_product_details(request):
                 "quantity": _to_float(g[3]),
             })
 
-        # 🔹 MAIN PRODUCT QUERY (UNCHANGED)
+        # 🔹 MAIN PRODUCT QUERY (ONLY text1 added)
         cur.execute("""
             SELECT 
                 p.code,
@@ -658,7 +658,8 @@ def get_product_details(request):
                 pb.cost,
 
                 m.name AS supplier_name,
-                pb.expirydate
+                pb.expirydate,
+                pb.text1   -- ✅ ADDED
 
             FROM acc_product p
 
@@ -682,6 +683,8 @@ def get_product_details(request):
             if expiry:
                 expiry = expiry.isoformat() if hasattr(expiry, "isoformat") else str(expiry)
 
+            text1_value = r[18]   # ✅ ADDED
+
             item = {
                 "code": r[0],
                 "name": r[1],
@@ -698,9 +701,11 @@ def get_product_details(request):
                 "supplier": r[16],
                 "expirydate": expiry,
 
+                "text1": text1_value,   # ✅ ADDED
+
                 "prices": [],
 
-                # ✅ NEW ARRAY (SAFE ADDITION)
+                # ✅ EXISTING (UNCHANGED)
                 "goddown_stock": goddown_map.get(r[8], [])
             }
 
@@ -985,3 +990,59 @@ def stock_upload(request):
         except Exception:
             pass
 
+
+
+@jwt_required
+@require_http_methods(["GET"])
+def get_misel(request):
+    logging.info("🏢 Misel details request")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT
+                firm_name,
+                mobile,
+                address,
+                address1,
+                address2,
+                address3,
+                tinno
+            FROM DBA.misel
+        """)
+
+        rows = cur.fetchall()
+
+        data = []
+        for r in rows:
+            data.append({
+                "firm_name": r[0],
+                "mobile": r[1],
+                "address": r[2],
+                "address1": r[3],
+                "address2": r[4],
+                "address3": r[5],
+                "tinno": r[6],
+            })
+
+        return JsonResponse({
+            "status": "success",
+            "count": len(data),
+            "data": data
+        })
+
+    except Exception as e:
+        logging.exception("misel api failed")
+        return JsonResponse(
+            {"detail": f"Failed to fetch misel data: {e}"},
+            status=500
+        )
+
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
