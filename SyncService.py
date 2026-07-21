@@ -83,7 +83,10 @@ def validate_client_id(client_id: str) -> bool:
     for attempt in range(3):
         try:
             ctx = ssl.create_default_context()
-            with urllib.request.urlopen(API_URL, context=ctx, timeout=15) as res:
+            req = urllib.request.Request(API_URL, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TASK-PMS/1.0"
+            })
+            with urllib.request.urlopen(req, context=ctx, timeout=15) as res:
                 payload = json.loads(res.read().decode("utf-8"))
             if not payload.get("success"):
                 return False
@@ -109,7 +112,10 @@ def validate_company_info(client_id: str, db_dsn: str) -> None:
     # ── 1. Fetch client list from activation server ──────────────────
     try:
         ctx = ssl.create_default_context()
-        with urllib.request.urlopen(CLIENT_LIST_URL, context=ctx, timeout=10) as res:
+        req = urllib.request.Request(CLIENT_LIST_URL, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TASK-PMS/1.0"
+        })
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as res:
             payload = json.loads(res.read().decode("utf-8"))
     except Exception as e:
         raise CompanyMismatchError(

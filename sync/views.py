@@ -1046,3 +1046,55 @@ def get_misel(request):
             conn.close()
         except Exception:
             pass
+
+
+
+
+@jwt_required
+@require_http_methods(["GET"])
+def get_acc_misel(request):
+    logging.info("📦 acc_misel WMB fields request")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT 
+                wmbwidth,
+                wmbnoid,
+                wmbwtid,
+                wmbitwidth
+            FROM acc_misel
+        """)
+
+        row = cur.fetchone()
+
+        if not row:
+            return JsonResponse({
+                "status": "error",
+                "message": "No data found in acc_misel"
+            }, status=404)
+
+        return JsonResponse({
+            "status": "success",
+            "data": {
+                "wmbwidth": row[0],
+                "wmbnoid": row[1],
+                "wmbwtid": row[2],
+                "wmbitwidth": row[3],
+            }
+        })
+
+    except Exception as e:
+        logging.exception("get_acc_misel failed")
+        return JsonResponse({
+            "detail": f"Failed to fetch acc_misel data: {e}"
+        }, status=500)
+
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except:
+            pass

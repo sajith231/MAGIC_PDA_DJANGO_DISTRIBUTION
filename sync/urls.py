@@ -14,6 +14,7 @@ urlpatterns = [
     path("stock-upload", views.stock_upload, name="upload_orders"),
 
     path("misel", views.get_misel, name="misel"),
+    path("acc-misel", views.get_acc_misel, name="get_acc_misel"),
     
 
 ]
