@@ -514,6 +514,11 @@ def upload_orders(request):
                     final_barcode = final_barcode.strip()
 
                 taxcode_value = "NT"
+                if product_code:
+                    cur.execute("SELECT taxcode FROM acc_product WHERE code = ?", (product_code,))
+                    tax_row = cur.fetchone()
+                    if tax_row and tax_row[0]:
+                        taxcode_value = tax_row[0]
 
                 cur.execute("""
                     INSERT INTO acc_purchaseorderdetails
