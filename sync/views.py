@@ -639,48 +639,138 @@ def get_product_details(request):
                 "quantity": _to_float(g[3]),
             })
 
-        # 🔹 MAIN PRODUCT QUERY (ONLY text1 added)
-        cur.execute("""
-            SELECT 
-                p.code,
-                p.name,
-                d.department,
-                p.product,
-                p.brand,
-                p.unit,
-                p.taxcode,
+        # 🔹 CHECK BARCODE SETTING (same condition as sync.py productbatch_bgr_condition)
+        cur.execute("SELECT COALESCE(barcodelength, 0) FROM acc_misel")
+        barcode_row = cur.fetchone()
+        barcode_enabled = bool(barcode_row) and int(barcode_row[0] or 0) > 0
 
-                pb.productcode,
-                pb.barcode,
-                pb.quantity,
+        if barcode_enabled:
+            # 🔹 MAIN PRODUCT QUERY (ONLY text1 added)
+            cur.execute("""
+                SELECT 
+                    p.code,
+                    p.name,
+                    d.department,
+                    p.product,
+                    p.brand,
+                    p.unit,
+                    p.taxcode,
 
-                pb.salesprice,
-                pb.secondprice,
-                pb.thirdprice,
-                pb.fourthprice,
+                    pb.productcode,
+                    pb.barcode,
+                    pb.quantity,
 
-                pb.bmrp,
-                pb.cost,
+                    pb.salesprice,
+                    pb.secondprice,
+                    pb.thirdprice,
+                    pb.fourthprice,
 
-                m.name AS supplier_name,
-                pb.expirydate,
-                pb.text1   -- ✅ ADDED
+                    pb.bmrp,
+                    pb.cost,
 
-            FROM acc_product p
+                    m.name AS supplier_name,
+                    pb.expirydate,
+                    pb.text1   -- ✅ ADDED
 
-            LEFT JOIN acc_departments d
-                   ON p.catagory = d.department_id
+                FROM acc_product p
 
-            LEFT JOIN acc_productbatch pb
-                   ON p.code = pb.productcode
+                LEFT JOIN acc_departments d
+                       ON p.catagory = d.department_id
 
-            LEFT JOIN acc_master m
-                   ON pb.supplier = m.code
+                LEFT JOIN acc_productbatch pb
+                       ON p.code = pb.productcode
 
-            ORDER BY p.code
-        """)
+                LEFT JOIN acc_master m
+                       ON pb.supplier = m.code
 
-        rows = cur.fetchall()
+                ORDER BY p.code
+            """)
+            rows = cur.fetchall()
+
+        else:
+            # 🔹 FALLBACK – build from acc_product + acc_productprice
+            #    (mirrors build_productbatch_from_product: barcode = product code,
+            #     quantity = openingquantity + quantity)
+            cur.execute("""
+                SELECT 
+                    p.code,
+                    p.name,
+                    d.department,
+                    p.product,
+                    p.brand,
+                    p.unit,
+                    p.taxcode,
+
+                    p.quantity,
+                    p.openingquantity,
+                    p.saleprice,
+                    p.billedcost,
+                    p.expirydate,
+                    p.settings
+
+                FROM acc_product p
+
+                LEFT JOIN acc_departments d
+                       ON p.catagory = d.department_id
+
+                WHERE TRIM(p.defected) = 'O'
+
+                ORDER BY p.code
+            """)
+            products = cur.fetchall()
+
+            cur.execute("""
+                SELECT
+                    productcode,
+                    pricecode,
+                    price
+                FROM acc_productprice
+            """)
+            price_rows = cur.fetchall()
+
+            price_map = {}
+            for productcode, pricecode, price in price_rows:
+                if not productcode or not pricecode:
+                    continue
+                productcode = productcode.strip()
+                pricecode = pricecode.strip()
+                price_map.setdefault(productcode, {})[pricecode] = price
+
+            rows = []
+            for (
+                code, name, department, product, brand, unit, taxcode,
+                quantity, openingquantity, saleprice, billedcost, expirydate, settings
+            ) in products:
+                if not code:
+                    continue
+                code = code.strip()
+                prices = price_map.get(code, {})
+
+                final_quantity = (openingquantity if openingquantity not in (None, 0) else 0) + (quantity or 0)
+
+                # keep same tuple layout as barcode-enabled query
+                rows.append((
+                    code,                                     # p.code
+                    name,                                     # p.name
+                    department,                               # d.department
+                    product,                                  # p.product
+                    brand,                                    # p.brand
+                    unit,                                     # p.unit
+                    taxcode,                                  # p.taxcode
+                    code,                                     # productcode
+                    code,                                     # barcode
+                    final_quantity,                           # quantity
+                    prices.get("S") or saleprice,             # salesprice
+                    prices.get("S2"),                         # secondprice
+                    prices.get("S3"),                         # thirdprice
+                    prices.get("S4"),                         # fourthprice
+                    saleprice,                                # bmrp
+                    billedcost,                               # cost
+                    None,                                     # supplier name
+                    expirydate,                               # expirydate
+                    settings,                                 # text1
+                ))
+
         out = []
 
         for r in rows:
