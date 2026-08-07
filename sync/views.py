@@ -594,7 +594,20 @@ def get_product_details(request):
     conn = get_connection()
     cur = conn.cursor()
 
+    MAX_PRODUCTS_PER_RESPONSE = 500
+    MAX_GODOWN_STOCK_ITEMS_PER_PRODUCT = 10
+
     try:
+        limit_param = (request.GET.get("limit") or "").strip()
+        if limit_param.lower() in {"", "all", "full"}:
+            max_products = MAX_PRODUCTS_PER_RESPONSE
+        else:
+            try:
+                max_products = int(limit_param)
+            except (TypeError, ValueError):
+                max_products = MAX_PRODUCTS_PER_RESPONSE
+            max_products = max(1, min(max_products, 5000))
+
         # 🔹 Fetch price codes with names
         cur.execute("""
             SELECT code, name
@@ -632,7 +645,11 @@ def get_product_details(request):
             if not barcode:
                 continue
 
-            goddown_map.setdefault(barcode, []).append({
+            stock_entries = goddown_map.setdefault(barcode, [])
+            if len(stock_entries) >= MAX_GODOWN_STOCK_ITEMS_PER_PRODUCT:
+                continue
+
+            stock_entries.append({
                 "goddownid": g[0],
                 "product": g[1],
                 "barcode": g[2],
@@ -773,7 +790,7 @@ def get_product_details(request):
 
         out = []
 
-        for r in rows:
+        for r in rows[:max_products]:
             expiry = r[17]
             if expiry:
                 expiry = expiry.isoformat() if hasattr(expiry, "isoformat") else str(expiry)
