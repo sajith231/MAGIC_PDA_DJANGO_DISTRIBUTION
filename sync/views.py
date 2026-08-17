@@ -728,9 +728,7 @@ def get_product_details(request):
                 FROM acc_product p
 
                 LEFT JOIN acc_departments d
-                       ON p.catagory = d.department_id
-
-                WHERE TRIM(p.defected) = 'O'
+                    ON p.catagory = d.department_id
 
                 ORDER BY p.code
             """)
