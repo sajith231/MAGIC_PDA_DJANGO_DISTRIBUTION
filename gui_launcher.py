@@ -12,7 +12,10 @@ import json
 
 def load_db_dsn():
     try:
-        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+        if getattr(sys, "frozen", False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(__file__)
         cfg_path = os.path.join(base, "config.json")
 
         with open(cfg_path, "r", encoding="utf-8") as f:

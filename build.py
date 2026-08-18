@@ -11,11 +11,10 @@ GUI_ENTRY = "gui_launcher.py"
 
 # Files & folders that MUST travel with the EXE
 EXTRA_DATA = [
-    ("config.json", "."),
     ("django_sync", "django_sync"),
     ("db.sqlite3", "."),
     ("imcbs_logo.png", "."),
-    ("pms_icone.ico", "."),   # optional````````````````````````````````````````````````````````````````````````````````
+    ("pms_icone.ico", "."),
     ("pms_icone.png", "."),
 ]
 
@@ -79,7 +78,7 @@ def build():
     # =================================================
     gui_cmd = [
         py, "-m", "PyInstaller",
-        "--onedir",                 # ✅ FIXED: prevents _MEI temp cleanup after 3 hours
+        "--onefile",
         "--noconsole",              # ✅ IMPORTANT: NO TERMINAL WINDOW
         f"--name={PROJECT_NAME}",
         "--icon=pms_icone.ico",   # ✅ ADD THIS LINE
@@ -107,27 +106,12 @@ def build():
     # =================================================
     os.makedirs(DIST_ROOT, exist_ok=True)
 
-    # Copy all files from onedir output directly into DIST_ROOT (same folder style as before)
-    onedir_src = os.path.join(DIST_DIR, PROJECT_NAME)
-    for item in os.listdir(onedir_src):
-        s = os.path.join(onedir_src, item)
-        d = os.path.join(DIST_ROOT, item)
-        if os.path.isdir(s):
-            shutil.copytree(s, d, dirs_exist_ok=True)
-        else:
-            shutil.copy2(s, d)
+    # Copy single EXE from dist/
+    exe_src = os.path.join(DIST_DIR, f"{PROJECT_NAME}.exe")
+    shutil.copy2(exe_src, os.path.join(DIST_ROOT, f"{PROJECT_NAME}.exe"))
 
-    # Copy assets + config
-    for src, dst in EXTRA_DATA:
-        if not os.path.exists(src):
-            continue
-
-        target = DIST_ROOT if dst == "." else os.path.join(DIST_ROOT, dst)
-        if os.path.isdir(src):
-            shutil.copytree(src, target, dirs_exist_ok=True)
-        else:
-            os.makedirs(target, exist_ok=True)
-            shutil.copy2(src, os.path.join(target, os.path.basename(src)))
+    # Copy config.json next to the exe (user-editable)
+    shutil.copy2("config.json", os.path.join(DIST_ROOT, "config.json"))
 
     print("\n✅ BUILD SUCCESSFUL")
     print("📦 Final folder:", os.path.abspath(DIST_ROOT))
