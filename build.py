@@ -1,13 +1,13 @@
-# build.py — AUTO packager for TASK PMS SYNC (single EXE — SyncService is bundled inside)
+# build.py — AUTO packager for TASK PMS (single EXE — SyncService is bundled inside)
 import os
 import sys
 import subprocess
 import shutil
 import venv
 
-PROJECT_NAME = "TASK_PMS_SYNC"
+PROJECT_NAME = "TASK_PMS"
 GUI_ENTRY = "gui_launcher.py"
-# SyncService.py is imported by gui_launcher.py and bundled automatically inside TASK_PMS_SYNC.exe
+# SyncService.py is imported by gui_launcher.py and bundled automatically inside TASK_PMS.exe
 
 # Files & folders that MUST travel with the EXE
 EXTRA_DATA = [
@@ -31,7 +31,7 @@ REQUIREMENTS = [
     "pystray",
 ]
 
-DIST_ROOT = f"{PROJECT_NAME.lower()}_dist"
+DIST_ROOT = "TASK_PMS"
 BUILD_DIR = "build"
 DIST_DIR = "dist"
 VENV_DIR = ".buildvenv"
@@ -99,7 +99,7 @@ def build():
         GUI_ENTRY,
     ]
 
-    print("\n🚀 Building TASK_PMS_SYNC EXE …")
+    print("\n🚀 Building TASK_PMS EXE …")
     run(gui_cmd)
 
     # =================================================
@@ -131,7 +131,7 @@ def build():
 
     print("\n✅ BUILD SUCCESSFUL")
     print("📦 Final folder:", os.path.abspath(DIST_ROOT))
-    print("✔ TASK_PMS_SYNC.exe built — SyncService is bundled inside")
+    print("✔ TASK_PMS.exe built — SyncService is bundled inside")
 
 
 # -------------------------------------------------
