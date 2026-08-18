@@ -69,7 +69,7 @@ def _coerce_date(v):
     """
     if isinstance(v, date):
         return v
-    if not v:
+    if not v:               
         return date.today()
     s = str(v).strip().replace("/", "-")
     # try common formats
