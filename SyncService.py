@@ -210,7 +210,7 @@ def load_config():
         print("❌ config.json must contain DB_DSN and CLIENT_ID")
         sys.exit(1)
 
-    return cfg["DB_DSN"], cfg["CLIENT_ID"]
+    return cfg["DB_DSN"], cfg["CLIENT_ID"], cfg.get("DEBTO", "NO")
 
 
 
@@ -249,7 +249,7 @@ def run_server(ip, port):
 # MAIN
 # ===============================
 def main():
-    db_dsn, client_id = load_config()
+    db_dsn, client_id, debto = load_config()
 
     print("🔐 Validating client license...")
 
@@ -267,6 +267,7 @@ def main():
     os.environ["DB_DSN"] = db_dsn
     os.environ["DB_UID"] = DB_UID
     os.environ["DB_PWD"] = DB_PWD
+    os.environ["DEBTO"] = debto
 
     os.environ["SECRET_KEY"] = SECRET_KEY
     os.environ["DEBUG"] = str(DEBUG)

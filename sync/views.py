@@ -174,8 +174,12 @@ def data_download(request):
     cur = conn.cursor()
 
     try:
-        # MASTER DATA
-        cur.execute("SELECT code, name, place FROM acc_master WHERE super_code = 'SUNCR'")
+        # MASTER DATA — DEBTO config: YES = include 'DEBTO' super_code too
+        debto = os.getenv("DEBTO", "NO").upper()
+        if debto == "YES":
+            cur.execute("SELECT code, name, place FROM acc_master WHERE super_code IN ('SUNCR', 'DEBTO')")
+        else:
+            cur.execute("SELECT code, name, place FROM acc_master WHERE super_code = 'SUNCR'")
         master_rows = cur.fetchall()
         master_data = [{"code": r[0], "name": r[1], "place": r[2]} for r in master_rows]
 
