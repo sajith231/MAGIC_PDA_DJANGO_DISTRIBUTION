@@ -594,7 +594,7 @@ def get_product_details(request):
     conn = get_connection()
     cur = conn.cursor()
 
-    MAX_PRODUCTS_PER_RESPONSE = 500
+    MAX_PRODUCTS_PER_RESPONSE = 999999
     MAX_GODOWN_STOCK_ITEMS_PER_PRODUCT = 10
 
     try:
@@ -606,7 +606,7 @@ def get_product_details(request):
                 max_products = int(limit_param)
             except (TypeError, ValueError):
                 max_products = MAX_PRODUCTS_PER_RESPONSE
-            max_products = max(1, min(max_products, 5000))
+            max_products = max(1, min(max_products, 999999))
 
         # 🔹 Fetch price codes with names
         cur.execute("""
