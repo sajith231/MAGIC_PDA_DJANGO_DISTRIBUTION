@@ -210,7 +210,12 @@ def load_config():
         print("❌ config.json must contain DB_DSN and CLIENT_ID")
         sys.exit(1)
 
-    return cfg["DB_DSN"], cfg["CLIENT_ID"], cfg.get("DEBTO", "NO")
+    return (
+        cfg["DB_DSN"],
+        cfg["CLIENT_ID"],
+        cfg.get("DEBTO", "NO"),
+        cfg.get("METHOD", 1),
+    )
 
 
 
@@ -249,7 +254,9 @@ def run_server(ip, port):
 # MAIN
 # ===============================
 def main():
-    db_dsn, client_id, debto = load_config()
+    db_dsn, client_id, debto, method = load_config()
+
+    print(f"🔧 METHOD = {method}")
 
     print("🔐 Validating client license...")
 
@@ -259,8 +266,47 @@ def main():
 
     print("✅ Client verified for TASK PMS")
 
+    # ── Company validation always runs against the FIRST DB ──
     print("🔐 Verifying company & place against local database...")
     validate_company_info(client_id, db_dsn)
+
+    # ── METHOD 2: Discover and switch to second database ──
+    if method == 2:
+        print("🔄 METHOD 2 — Discovering second database from dba.sounds...")
+        try:
+            import pyodbc
+            from sync.sql_helper import (
+                fetch_second_db_info,
+                SecondDatabaseConnector,
+                set_second_db,
+            )
+
+            # 1. Connect to FIRST DB via DSN
+            conn_str = f"DSN={db_dsn};UID={DB_UID};PWD={DB_PWD}"
+            first_conn = pyodbc.connect(conn_str, autocommit=True, timeout=10)
+            print("   ✅ Connected to first DB")
+
+            # 2. Read dba.sounds
+            pf, df = fetch_second_db_info(first_conn)
+            print(f"   📋 Second DB: pf={pf}, df={df}")
+
+            # 3. Close FIRST DB
+            first_conn.close()
+            print("   🔒 Closed first DB connection")
+
+            # 4. Connect to SECOND DB
+            connector = SecondDatabaseConnector(db_name=pf, db_file_path=df)
+            connector.connect()
+            print("   ✅ Connected to second DB")
+
+            # 5. Monkey-patch sql_helper to use second DB
+            set_second_db(connector)
+            print("   🔓 All get_connection() calls now use second DB")
+
+        except Exception as e:
+            print(f"❌ METHOD 2 failed: {e}")
+            print("   Falling back to first DB (METHOD 1 behavior)")
+            # continue with first DB as fallback
 
     # 🔐 ENVIRONMENT
     os.environ["PAIR_PASSWORD"] = PAIR_PASSWORD
