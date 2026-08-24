@@ -85,6 +85,27 @@ def get_connection():
         raise
 
 
+def release_connection(conn):
+    """
+    Release a connection obtained from get_connection().
+
+    METHOD 2 (second database): get_connection() hands out the SINGLE
+    shared SecondDatabaseConnector connection. Closing it here would
+    break any other request still using it ("The cursor's connection
+    was closed."). The connector owns its lifecycle — it health-checks
+    with SELECT 1 and reconnects automatically when needed.
+
+    METHOD 1 (DSN): each call creates a fresh per-request connection,
+    so closing it is safe and expected.
+    """
+    if _second_db_config is not None:
+        return
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
 def get_primary_connection():
     """
     Always returns a connection to the PRIMARY database (DSN-based),

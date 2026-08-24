@@ -13,7 +13,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from .sql_helper import get_connection, _get_config
+from .sql_helper import get_connection, release_connection, _get_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -142,7 +142,7 @@ def login(request):
         return JsonResponse({"detail": f"DB error: {dbx}"}, status=500)
     finally:
         try:
-            cur.close(); conn.close()
+            cur.close(); release_connection(conn)
         except Exception:
             pass
 
@@ -226,7 +226,7 @@ def data_download(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -555,7 +555,7 @@ def upload_orders(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -858,7 +858,7 @@ def get_product_details(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -968,7 +968,7 @@ def acc_goddown(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -1018,7 +1018,7 @@ def get_users(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -1100,7 +1100,7 @@ def stock_upload(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -1157,7 +1157,7 @@ def get_misel(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except Exception:
             pass
 
@@ -1209,6 +1209,6 @@ def get_acc_misel(request):
     finally:
         try:
             cur.close()
-            conn.close()
+            release_connection(conn)
         except:
             pass
