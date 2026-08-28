@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "rest_framework",           # djangorestframework
     "corsheaders",              # django-cors-headers
     "sync",                     # our app
+    "E_Gate_Billing",           # E-Gate billing app
 ]
 
 # ---------- MIDDLEWARE ----------

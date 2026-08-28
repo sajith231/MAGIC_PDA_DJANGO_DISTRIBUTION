@@ -20,4 +20,5 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("sync.urls")),
+    path("", include("E_Gate_Billing.urls")),
 ]
