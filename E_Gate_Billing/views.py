@@ -27,8 +27,8 @@ def e_gate_billing(request):
         "A"   -> type  (character part)
         "1"   -> billno (numeric part, must be > 0)
 
-    On success the matching row's ft column is set to '##EGATE##'.
-    If the row already has ft = '##EGATE##', responds "Already billed".
+    On success the '##EGATE##' flag is appended to the matching row's ft column.
+    If '##EGATE##' already appears anywhere in ft, responds "Already billed".
     """
     try:
         payload = json.loads(request.body or b"{}")
@@ -82,21 +82,24 @@ def e_gate_billing(request):
             return JsonResponse({"detail": "No matching invoice found"}, status=404)
 
         current_ft = (row[1] or "").strip()
-        if current_ft == EGATE_FLAG:
+
+        if EGATE_FLAG in current_ft:
             return JsonResponse(
                 {
                     "status": "already_billed",
                     "detail": "Already billed",
                     "type": type_part,
                     "billno": billno,
-                    "ft": EGATE_FLAG,
+                    "ft": current_ft,
                 },
                 status=400,
             )
 
+        new_ft = EGATE_FLAG if not current_ft else current_ft + EGATE_FLAG
+
         cur.execute(
             "UPDATE DBA.acc_invmast SET ft = ? WHERE TRIM(type) = ? AND billno = ?",
-            (EGATE_FLAG, type_part, billno),
+            (new_ft, type_part, billno),
         )
 
         logging.info("✅ E-Gate billed: type=%s billno=%s", type_part, billno)
@@ -106,7 +109,7 @@ def e_gate_billing(request):
                 "detail": "E-Gate billed successfully",
                 "type": type_part,
                 "billno": billno,
-                "ft": EGATE_FLAG,
+                "ft": new_ft,
             }
         )
     except Exception as e:
