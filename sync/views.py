@@ -629,6 +629,7 @@ def get_product_details(request):
             "cost": "CO",
             "salesprice": "S1",
             "secondprice": "S2",
+            "thirdprice": "S3",
         }
 
         # 🔹 FETCH GODOWN STOCK (NEW – SAFE)
@@ -827,6 +828,7 @@ def get_product_details(request):
             price_values = {
                 "salesprice": r[10],
                 "secondprice": r[11],
+                "thirdprice": r[12],
                 "bmrp": r[14],
                 "cost": r[15],
             }
