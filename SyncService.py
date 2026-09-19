@@ -72,6 +72,11 @@ class CompanyMismatchError(Exception):
     pass
 
 
+class ActivationServerUnreachable(Exception):
+    """Raised when the activation server cannot be reached (network down, etc.)."""
+    pass
+
+
 
 def validate_client_id(client_id: str) -> bool:
     """
@@ -98,7 +103,7 @@ def validate_client_id(client_id: str) -> bool:
         except Exception as e:
             print(f"⚠️ Attempt {attempt+1} failed: {e}")
             time.sleep(5)
-    return False
+    raise ActivationServerUnreachable("Cannot reach activation server to validate license.")
 
 
 def validate_company_info(client_id: str, db_dsn: str) -> None:
@@ -118,7 +123,7 @@ def validate_company_info(client_id: str, db_dsn: str) -> None:
         with urllib.request.urlopen(req, context=ctx, timeout=10) as res:
             payload = json.loads(res.read().decode("utf-8"))
     except Exception as e:
-        raise CompanyMismatchError(
+        raise ActivationServerUnreachable(
             f"Cannot reach activation server to verify company info.\n\nDetails: {e}"
         )
 
@@ -254,21 +259,28 @@ def run_server(ip, port):
 # MAIN
 # ===============================
 def main():
+    import time
     db_dsn, client_id, debto, method = load_config()
 
     print(f"🔧 METHOD = {method}")
 
     print("🔐 Validating client license...")
 
-    if not validate_client_id(client_id):
-        print("❌ License check failed (Invalid client or TASK PMS not enabled)")
-        sys.exit(1)
+    while True:
+        try:
+            if not validate_client_id(client_id):
+                print("❌ License check failed (Invalid client or TASK PMS not enabled)")
+                sys.exit(1)
 
-    print("✅ Client verified for TASK PMS")
+            print("✅ Client verified for TASK PMS")
 
-    # ── Company validation always runs against the FIRST DB ──
-    print("🔐 Verifying company & place against local database...")
-    validate_company_info(client_id, db_dsn)
+            print("🔐 Verifying company & place against local database...")
+            validate_company_info(client_id, db_dsn)
+            break
+        except ActivationServerUnreachable as e:
+            print(f"⚠️ Activation server unreachable: {e}")
+            print("⏳ Waiting for network and retrying automatically in 15s...")
+            time.sleep(15)
 
     # ── METHOD 2: Discover and switch to second database ──
     if method == 2:

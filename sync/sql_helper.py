@@ -77,7 +77,7 @@ def get_connection():
         raise RuntimeError("DB_PWD not set")
 
     try:
-        conn_str = f"DSN={dsn};UID={uid};PWD={pwd}"
+        conn_str = f"DSN={dsn};UID={uid};PWD={pwd};charset=UTF-8"
         return pyodbc.connect(conn_str, autocommit=True)
     except Exception as e:
         print("❌ Database connection failed")
@@ -124,7 +124,7 @@ def get_primary_connection():
         raise RuntimeError("DB_PWD not set")
 
     try:
-        conn_str = f"DSN={dsn};UID={uid};PWD={pwd}"
+        conn_str = f"DSN={dsn};UID={uid};PWD={pwd};charset=UTF-8"
         return pyodbc.connect(conn_str, autocommit=True)
     except Exception as e:
         print("❌ Primary database connection failed")

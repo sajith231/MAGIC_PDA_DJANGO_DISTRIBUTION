@@ -158,6 +158,10 @@ class Redirect:
             self._log(f"[{timestamp}] {msg.strip()}\n", "info")
             return
 
+        if "⚠️" in msg:
+            self._log(f"[{timestamp}] {msg.strip()}\n", "info")
+            return
+
         if "ERROR" in msg or "Exception" in msg or "Traceback" in msg or "❌" in msg:
             self._log(f"[{timestamp}] {msg if '❌' in msg else '❌ ' + msg}", "error")
 
