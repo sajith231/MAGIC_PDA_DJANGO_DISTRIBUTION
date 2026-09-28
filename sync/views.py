@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from decimal import Decimal
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 from decimal import Decimal, ROUND_HALF_UP
 from django.http import JsonResponse
@@ -22,6 +22,14 @@ PAIR_PASSWORD = "IMC-MOBILE"
 # ✅ Make JWT robust: default secret if env missing (so login won’t fail silently)
 JWT_SECRET = os.getenv("JWT_SECRET") or "dev-secret-change-me"
 JWT_ALGO   = os.getenv("JWT_ALGO", "HS256")
+
+# ✅ Token lifetime in days. Defaults to ~100 years so clients are not forced to
+#    re-login. Override at runtime with the JWT_EXPIRY_DAYS env var.
+try:
+    JWT_EXPIRY_DAYS = int(os.getenv("JWT_EXPIRY_DAYS") or 36500)
+except (TypeError, ValueError):
+    logging.warning("Invalid JWT_EXPIRY_DAYS, falling back to 36500 days")
+    JWT_EXPIRY_DAYS = 36500
 
 
 # ------------------ helpers ------------------
@@ -150,7 +158,7 @@ def login(request):
         logging.warning("❌ Invalid credentials")
         return JsonResponse({"detail": "Invalid credentials"}, status=401)
 
-    payload = {"sub": userid, "exp": datetime.utcnow() + timedelta(days=7)}
+    payload = {"sub": userid, "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)}
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
     # PyJWT v2 returns a str already; in v1 it may be bytes
     if isinstance(token, bytes):

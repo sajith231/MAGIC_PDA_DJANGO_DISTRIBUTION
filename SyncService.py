@@ -62,6 +62,7 @@ DEBUG = False
 
 JWT_SECRET = "SyncAnywhereJWTSecret2025"
 JWT_ALGO = "HS256"
+JWT_EXPIRY_DAYS = 36500
 
 API_URL        = "https://activate.imcbs.com/corporate-clientid/list/"
 CLIENT_LIST_URL = "https://activate.imcbs.com/client-id-list/get-client-ids/"
@@ -331,6 +332,9 @@ def main():
     os.environ["DEBUG"] = str(DEBUG)
     os.environ["JWT_SECRET"] = JWT_SECRET
     os.environ["JWT_ALGO"] = JWT_ALGO
+    # setdefault (not plain assign) so a JWT_EXPIRY_DAYS already present in the
+    # operator's environment wins over the built-in default.
+    os.environ.setdefault("JWT_EXPIRY_DAYS", str(JWT_EXPIRY_DAYS))
 
     bootstrap_django()
 
