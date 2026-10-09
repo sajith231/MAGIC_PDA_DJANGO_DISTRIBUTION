@@ -824,7 +824,7 @@ def get_product_details(request):
                 "supplier": r[16],
                 "expirydate": expiry,
 
-                "text1": text1_value,   # ✅ ADDED
+                "text1": text1_value,   # ✅ ADDEDD
 
                 "prices": [],
 

@@ -176,66 +176,6 @@ class Redirect:
         self.widget.after(0, self.widget.see, tk.END)
 
 # ===============================
-# AUTO-RESTART EVERY 3 HOURS
-# ===============================
-AUTO_RESTART_SECONDS = 3 * 60 * 60   # 3 hours
-
-_restart_label   = None   # tk.Label — filled in after GUI is built
-_restart_after_id = None  # tk.after handle
-
-def _format_countdown(seconds_left):
-    h = seconds_left // 3600
-    m = (seconds_left % 3600) // 60
-    s = seconds_left % 60
-    return f"🔄 Auto-restart in {h:02d}:{m:02d}:{s:02d}"
-
-def _do_process_restart():
-    """Hard-restart the whole EXE — cleanest way to reset Django."""
-    try:
-        import subprocess
-        exe = sys.executable          # path to the running .exe (or python)
-        args = sys.argv[:]
-        subprocess.Popen([exe] + args[1:] + ["--autostart"])
-    except Exception:
-        pass
-    os._exit(0)
-
-def _countdown_tick(seconds_left):
-    global _restart_after_id
-
-    if _restart_label:
-        try:
-            if seconds_left > 0:
-                _restart_label.config(text=_format_countdown(seconds_left))
-            else:
-                _restart_label.config(text="🔄 Restarting now…")
-        except Exception:
-            pass
-
-    if seconds_left <= 0:
-        # Log the restart event
-        try:
-            ts = datetime.now().strftime("%H:%M:%S")
-            log.insert(tk.END,
-                f"[{ts}] 🔄 Auto-restart triggered (1-minute cycle)\n", "info")
-            log.insert(tk.END,
-                f"[{ts}] ⚠️ Restarting now — service will resume automatically...\n", "info")
-            log.see(tk.END)
-        except Exception:
-            pass
-
-        # Give tkinter 600 ms to render the label, then restart
-        root.after(600, _do_process_restart)
-        return
-
-    _restart_after_id = root.after(1000, _countdown_tick, seconds_left - 1)
-
-def start_auto_restart_timer():
-    """Call once after GUI is fully built to begin the countdown."""
-    _countdown_tick(AUTO_RESTART_SECONDS)
-
-
-# ===============================
 # BACKEND CONTROL
 # ===============================
 backend_running = False
@@ -305,22 +245,29 @@ def start_backend():
             )
             backend_running = False
             root.after(0, update_status, False)
+        except SyncService.RuntimeFilesMissing:
+            backend_running = False
+            detail = ("Bundled application files were removed while running "
+                      "(usually antivirus or a temp-file cleaner).\n\n"
+                      "Please restart TASK_PMS and add an antivirus exclusion for the app.")
+            log.after(0, log.insert, tk.END,
+                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ {detail}\n", "error")
+            log.after(0, log.see, tk.END)
+            messagebox.showerror("Application Files Missing", f"❌ {detail}")
+            root.after(0, update_status, False)
         except SystemExit:
-            log.insert(
-                tk.END,
-                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ License validation failed\n❌ Unauthorized client or TASK PMS not enabled\n",
-                "error"
-            )
             backend_running = False
-            update_status(False)
+            msg = (f"[{datetime.now().strftime('%H:%M:%S')}] ❌ License validation failed\n"
+                   f"❌ Unauthorized client or TASK PMS not enabled\n")
+            root.after(0, log.insert, tk.END, msg, "error")
+            root.after(0, log.see, tk.END)
+            root.after(0, update_status, False)
         except Exception as e:
-            log.insert(
-                tk.END,
-                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Backend crashed: {e}\n",
-                "error"
-            )
             backend_running = False
-            update_status(False)
+            msg = f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Backend crashed: {e}\n"
+            root.after(0, log.insert, tk.END, msg, "error")
+            root.after(0, log.see, tk.END)
+            root.after(0, update_status, False)
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -744,16 +691,6 @@ tk.Label(
     bg="#ffffff"
 ).pack()
 
-# ── Auto-restart countdown label (right side of footer) ──
-_restart_label = tk.Label(
-    footer_content,
-    text=_format_countdown(AUTO_RESTART_SECONDS),
-    font=("Segoe UI", 9),
-    fg="#94a3b8",
-    bg="#ffffff"
-)
-_restart_label.pack(pady=(4, 0))
-
 # ===============================
 # REDIRECT STDOUT SAFELY
 # ===============================
@@ -855,16 +792,5 @@ def _ipc_listener():
         pass   # port already in use or other error — non-fatal
 
 threading.Thread(target=_ipc_listener, daemon=True).start()
-
-# Kick off the 3-hour auto-restart countdown
-start_auto_restart_timer()
-
-# ===============================
-# AUTO-START ON TIMER RELAUNCH ONLY
-# ===============================
-# First launch → user must click Start Service manually.
-# After auto-restart (timer relaunch) → start automatically.
-if "--autostart" in sys.argv:
-    root.after(1000, start_backend)
 
 root.mainloop()

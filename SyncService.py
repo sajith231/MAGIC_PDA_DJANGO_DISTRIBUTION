@@ -47,6 +47,27 @@ from typing import Tuple
 
 
 # ===============================
+# PRE-LOAD HTTP / SSL STACK
+# ===============================
+# On a PyInstaller --onefile build these modules live inside base_library.zip in
+# the _MEIxxxxxx temp folder. Python's zipimport loads and then CLOSES that zip,
+# so antivirus or a temp cleaner can delete it while the app is still running.
+# urlopen then fails with "No such file or directory: ...base_library.zip" on its
+# next lazy import. Importing the whole stack up-front caches it in sys.modules,
+# so the license HTTP calls no longer need to read the zip again at runtime.
+try:
+    import http.client        # noqa: F401
+    import urllib.error       # noqa: F401
+    import urllib.parse       # noqa: F401
+    import base64             # noqa: F401
+    import email              # noqa: F401
+    import email.message      # noqa: F401
+    import select             # noqa: F401
+except Exception:
+    pass
+
+
+# ===============================
 # HARD LOCKED CONSTANTS
 # ===============================
 DJANGO_SETTINGS_MODULE = "django_sync.settings"
@@ -78,6 +99,22 @@ class ActivationServerUnreachable(Exception):
     pass
 
 
+class RuntimeFilesMissing(Exception):
+    """Raised when bundled runtime files (e.g. base_library.zip) were removed at runtime."""
+    pass
+
+
+def _is_runtime_file_error(exc) -> bool:
+    """True when the error is caused by missing bundled _MEI runtime files.
+
+    This happens when antivirus or a temp-file cleaner deletes files inside the
+    PyInstaller _MEIxxxxxx extraction folder while the app is still running.
+    """
+    mei = getattr(sys, "_MEIPASS", None)
+    text = str(exc)
+    return "base_library.zip" in text or (bool(mei) and mei in text)
+
+
 
 def validate_client_id(client_id: str) -> bool:
     """
@@ -86,11 +123,14 @@ def validate_client_id(client_id: str) -> bool:
     Retries 3 times to handle temp folder cleanup issues.
     """
     import time
+    client_id = (client_id or "").strip()
     for attempt in range(3):
         try:
             ctx = ssl.create_default_context()
             req = urllib.request.Request(API_URL, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TASK-PMS/1.0"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TASK-PMS/1.0",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
             })
             with urllib.request.urlopen(req, context=ctx, timeout=15) as res:
                 payload = json.loads(res.read().decode("utf-8"))
@@ -98,10 +138,13 @@ def validate_client_id(client_id: str) -> bool:
                 return False
             for corp in payload.get("data", []):
                 for shop in corp.get("shops", []):
-                    if shop.get("client_id") == client_id:
+                    if (shop.get("client_id") or "").strip() == client_id:
                         return "TASK PMS" in shop.get("projects", [])
             return False
         except Exception as e:
+            if _is_runtime_file_error(e):
+                # Files are gone for good — retrying cannot fix this.
+                raise RuntimeFilesMissing(str(e))
             print(f"⚠️ Attempt {attempt+1} failed: {e}")
             time.sleep(5)
     raise ActivationServerUnreachable("Cannot reach activation server to validate license.")
@@ -124,6 +167,8 @@ def validate_company_info(client_id: str, db_dsn: str) -> None:
         with urllib.request.urlopen(req, context=ctx, timeout=10) as res:
             payload = json.loads(res.read().decode("utf-8"))
     except Exception as e:
+        if _is_runtime_file_error(e):
+            raise RuntimeFilesMissing(str(e))
         raise ActivationServerUnreachable(
             f"Cannot reach activation server to verify company info.\n\nDetails: {e}"
         )
@@ -218,7 +263,7 @@ def load_config():
 
     return (
         cfg["DB_DSN"],
-        cfg["CLIENT_ID"],
+        (cfg.get("CLIENT_ID") or "").strip(),
         cfg.get("DEBTO", "NO"),
         cfg.get("METHOD", 1),
     )
@@ -267,17 +312,37 @@ def main():
 
     print("🔐 Validating client license...")
 
+    # A transient "no" from the activation server must NOT kill this running
+    # process. Keep retrying in the background so the SAME instance self-heals
+    # (no need to quit from tray and relaunch).
+    LICENSE_RETRY_INTERVAL = 5
+    first_license_fail = True
+
     while True:
         try:
-            if not validate_client_id(client_id):
+            if validate_client_id(client_id):
+                print("✅ Client verified for TASK PMS")
+
+                print("🔐 Verifying company & place against local database...")
+                validate_company_info(client_id, db_dsn)
+                break
+
+            # Transient failure — report once, then keep retrying.
+            if first_license_fail:
                 print("❌ License check failed (Invalid client or TASK PMS not enabled)")
-                sys.exit(1)
+                first_license_fail = False
+            print("⚠️ License not confirmed yet — retrying in 5s...")
+            time.sleep(LICENSE_RETRY_INTERVAL)
 
-            print("✅ Client verified for TASK PMS")
+        except RuntimeFilesMissing as e:
+            # Antivirus / temp cleanup deleted the app's extracted runtime files.
+            # Retrying cannot recover them — report clearly and let the GUI stop.
+            print("❌ Bundled application files were removed while running.")
+            print("   This is usually caused by antivirus or a temp-file cleaner deleting")
+            print("   files inside the app's temporary extraction folder.")
+            print("   Please restart TASK_PMS and add an antivirus exclusion for the app.")
+            raise
 
-            print("🔐 Verifying company & place against local database...")
-            validate_company_info(client_id, db_dsn)
-            break
         except ActivationServerUnreachable as e:
             print(f"⚠️ Activation server unreachable: {e}")
             print("⏳ Waiting for network and retrying automatically in 15s...")
